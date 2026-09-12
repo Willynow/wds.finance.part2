@@ -1015,6 +1015,32 @@ function renderRespaldoTab(){
       '<input type="file" accept=".csv,.xlsx,.xls" id="bulk-import-file">'+
       '<div id="bulk-import-status" style="margin-top:10px;font-size:13.5px;color:var(--ink-muted);"></div>'+
       '<div id="bulk-import-preview"></div>'+
+    '</div>'+
+    '<div class="card" style="margin-top:16px;">'+
+      '<h3 style="margin-bottom:6px;">Borrar un conjunto de movimientos</h3>'+
+      '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">Elimine solo los movimientos que coincidan con los filtros de abajo. Las cuentas, categorías y proveedores no se ven afectados.</p>'+
+      '<div class="filters-bar">'+
+        '<div class="field"><label>Cuenta</label><select id="del-flt-account"><option value="all">Todas las cuentas</option>'+
+          state.accounts.map(function(a){ return '<option value="'+a.id+'">'+esc(a.name)+'</option>'; }).join('')+
+        '</select></div>'+
+        '<div class="field"><label>Tipo</label><select id="del-flt-kind">'+
+          '<option value="all">Todo (ingresos, gastos y transferencias)</option>'+
+          '<option value="movements">Solo ingresos y gastos</option>'+
+          '<option value="income">Solo ingresos</option>'+
+          '<option value="expense">Solo gastos</option>'+
+          '<option value="transfer">Solo transferencias</option>'+
+        '</select></div>'+
+        '<div class="field"><label>Desde</label><input type="date" id="del-flt-from"></div>'+
+        '<div class="field"><label>Hasta</label><input type="date" id="del-flt-to"></div>'+
+      '</div>'+
+      '<div id="del-flt-count" style="font-size:13.5px;color:var(--ink-muted);margin-bottom:10px;"></div>'+
+      '<div id="del-flt-actions" class="row-actions"></div>'+
+    '</div>'+
+    '<div class="card" style="margin-top:16px;border-color:var(--expense);">'+
+      '<h3 style="margin-bottom:6px;color:var(--expense);">Borrar TODOS los datos de la app</h3>'+
+      '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">Esto elimina cuentas, movimientos, transferencias, categorías, proveedores e imágenes, y deja la app como recién instalada. Esta acción no se puede deshacer. Descargue una copia de seguridad antes si no está seguro.</p>'+
+      '<div class="field" style="max-width:320px;"><label>Escriba BORRAR TODO para habilitar el botón</label><input type="text" id="wipe-confirm-input" placeholder="BORRAR TODO"></div>'+
+      '<div class="row-actions"><button class="btn btn-danger" id="btn-wipe-all" disabled>Borrar todos los datos</button></div>'+
     '</div>';
 }
 
@@ -1094,6 +1120,95 @@ function wireRespaldoTab(){
   });
 
   wireBulkImportSection();
+  wireDeleteDataSection();
+}
+
+/* ---------------------------------------------------------
+   BORRAR DATOS (conjunto filtrado o reinicio total)
+--------------------------------------------------------- */
+function matchesDeleteFilter(t, f){
+  if(f.kind==='movements' && t.kind==='transfer') return false;
+  if(f.kind==='income' && t.kind!=='income') return false;
+  if(f.kind==='expense' && t.kind!=='expense') return false;
+  if(f.kind==='transfer' && t.kind!=='transfer') return false;
+  if(f.account!=='all'){
+    if(t.kind==='transfer'){ if(t.accountId!==f.account && t.toAccountId!==f.account) return false; }
+    else { if(t.accountId!==f.account) return false; }
+  }
+  if(f.from && t.date < f.from) return false;
+  if(f.to && t.date > f.to) return false;
+  return true;
+}
+function currentDeleteFilter(){
+  return {
+    account: document.getElementById('del-flt-account').value,
+    kind: document.getElementById('del-flt-kind').value,
+    from: document.getElementById('del-flt-from').value,
+    to: document.getElementById('del-flt-to').value
+  };
+}
+var delFilteredPendingConfirm = false;
+
+function refreshDeleteFilterUI(){
+  var f = currentDeleteFilter();
+  var matches = state.transactions.filter(function(t){ return matchesDeleteFilter(t, f); });
+  var countBox = document.getElementById('del-flt-count');
+  var actionsBox = document.getElementById('del-flt-actions');
+  countBox.innerHTML = '<strong class="num">'+matches.length+'</strong> '+(matches.length===1?'movimiento coincide con estos filtros.':'movimientos coinciden con estos filtros.');
+  if(delFilteredPendingConfirm && matches.length>0){
+    actionsBox.innerHTML = '<button class="btn btn-danger btn-sm" id="del-flt-confirm">Confirmar: eliminar '+matches.length+'</button>'+
+      '<button class="btn btn-sm" id="del-flt-cancel">Cancelar</button>';
+    document.getElementById('del-flt-confirm').addEventListener('click', async function(){
+      var f2 = currentDeleteFilter();
+      var toDelete = state.transactions.filter(function(t){ return matchesDeleteFilter(t, f2); });
+      var keepSet = {};
+      state.transactions.forEach(function(t){ if(!matchesDeleteFilter(t, f2)) keepSet[t.id]=true; });
+      var deletedCount = toDelete.length;
+      for(var i=0;i<toDelete.length;i++){ if(toDelete[i].hasImage){ await deleteImageKey(toDelete[i].id); } }
+      state.transactions = state.transactions.filter(function(t){ return keepSet[t.id]; });
+      await persist('transactions');
+      delFilteredPendingConfirm = false;
+      renderApp();
+      showToast(deletedCount+' movimientos eliminados.');
+    });
+    document.getElementById('del-flt-cancel').addEventListener('click', function(){
+      delFilteredPendingConfirm = false; refreshDeleteFilterUI();
+    });
+  } else {
+    actionsBox.innerHTML = '<button class="btn btn-danger btn-sm" id="del-flt-start" '+(matches.length===0?'disabled':'')+'>Eliminar estos movimientos</button>';
+    var startBtn = document.getElementById('del-flt-start');
+    if(startBtn) startBtn.addEventListener('click', function(){ delFilteredPendingConfirm = true; refreshDeleteFilterUI(); });
+  }
+}
+
+function wireDeleteDataSection(){
+  delFilteredPendingConfirm = false;
+  ['del-flt-account','del-flt-kind','del-flt-from','del-flt-to'].forEach(function(id){
+    document.getElementById(id).addEventListener('change', function(){ delFilteredPendingConfirm = false; refreshDeleteFilterUI(); });
+  });
+  refreshDeleteFilterUI();
+
+  var wipeInput = document.getElementById('wipe-confirm-input');
+  var wipeBtn = document.getElementById('btn-wipe-all');
+  wipeInput.addEventListener('input', function(){
+    wipeBtn.disabled = this.value.trim().toUpperCase() !== 'BORRAR TODO';
+  });
+  wipeBtn.addEventListener('click', async function(){
+    wipeBtn.disabled = true; wipeBtn.textContent = 'Borrando…';
+    var imgIds = state.transactions.filter(function(t){ return t.hasImage; }).map(function(t){ return t.id; });
+    for(var i=0;i<imgIds.length;i++){ await deleteImageKey(imgIds[i]); }
+    var defaults = defaultData();
+    state.accounts = defaults.accounts;
+    state.catIncome = defaults.catIncome;
+    state.catExpense = defaults.catExpense;
+    state.suppliers = defaults.suppliers;
+    state.transactions = defaults.transactions;
+    await persist('accounts'); await persist('catIncome'); await persist('catExpense');
+    await persist('suppliers'); await persist('transactions');
+    ui.tab = 'resumen';
+    renderApp();
+    showToast('Todos los datos fueron eliminados. La app quedó como recién instalada.');
+  });
 }
 
 /* ---------------------------------------------------------
