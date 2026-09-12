@@ -189,6 +189,7 @@
     .main-col{padding:18px 14px 90px;}
   }
 </style>
+<link rel="manifest" href="manifest.json">
 </head>
 <body>
 <div id="app">Cargando…</div>
@@ -207,19 +208,16 @@ var APP_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAIAAAB7Gk
   }
   addLink('icon', APP_ICON, {type:'image/png'});
   addLink('apple-touch-icon', APP_ICON);
-  try{
-    // Usamos la URL absoluta actual como start_url para evitar que el navegador
-    // la resuelva mal contra la URL del propio manifest (que es un blob:).
-    var absoluteUrl = location.href.split('#')[0];
-    var manifest = {
-      name:'WDS Finance', short_name:'WDS Finance', start_url: absoluteUrl, scope: absoluteUrl,
-      display:'standalone', background_color:'#F5F3EC', theme_color:'#155F4A',
-      icons:[{src:APP_ICON, sizes:'512x512', type:'image/png', purpose:'any maskable'}]
-    };
-    var blob = new Blob([JSON.stringify(manifest)], {type:'application/manifest+json'});
-    addLink('manifest', URL.createObjectURL(blob));
-  }catch(e){ /* si el navegador no admite el manifest, la app sigue funcionando igual */ }
+  // El manifest real ahora vive en manifest.json (enlazado en <head>),
+  // así que ya no se genera aquí dinámicamente.
 })();
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(e){ console.warn('No se pudo registrar el service worker', e); });
+  });
+}
+
 
 /* ---------------------------------------------------------
    Utilidades
