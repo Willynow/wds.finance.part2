@@ -1,36 +1,25 @@
-var CACHE_NAME = 'wds-finance-shell-v1';
-var APP_SHELL = ['./', './index.html'];
+// v2: este service worker YA NO guarda la app en caché (eso causaba que
+// las actualizaciones no se vieran). Solo limpia el caché viejo y deja
+// pasar todas las peticiones directo a la red.
+var OLD_CACHE_PREFIX = 'wds-finance-shell';
 
 self.addEventListener('install', function(event){
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(function(cache){ return cache.addAll(APP_SHELL); })
-  );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', function(event){
   event.waitUntil(
     caches.keys().then(function(keys){
-      return Promise.all(keys.filter(function(k){ return k !== CACHE_NAME; }).map(function(k){ return caches.delete(k); }));
+      return Promise.all(
+        keys.filter(function(k){ return k.indexOf(OLD_CACHE_PREFIX) === 0; })
+            .map(function(k){ return caches.delete(k); })
+      );
     })
   );
   self.clients.claim();
 });
 
-// Estrategia: responder rápido desde caché y actualizar en segundo plano.
-// Si no hay red (offline) y no hay caché, la petición simplemente falla.
 self.addEventListener('fetch', function(event){
-  if(event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then(function(cached){
-      var fetchPromise = fetch(event.request).then(function(networkResponse){
-        if(networkResponse && networkResponse.status === 200){
-          var clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then(function(cache){ cache.put(event.request, clone); });
-        }
-        return networkResponse;
-      }).catch(function(){ return cached; });
-      return cached || fetchPromise;
-    })
-  );
+  // Sin caché: siempre se pide la versión más reciente al servidor.
+  event.respondWith(fetch(event.request));
 });
