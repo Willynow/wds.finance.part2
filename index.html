@@ -1021,6 +1021,7 @@ function renderRespaldoTab(){
       '<p style="font-size:13px;"><strong>'+state.accounts.length+'</strong> cuentas · <strong>'+state.transactions.length+'</strong> movimientos registrados · <strong>'+totalImgs+'</strong> con imagen adjunta.</p>'+
       '<div class="row-actions" style="margin-top:14px;">'+
         '<button class="btn btn-primary" id="btn-export">Descargar copia de seguridad (.json)</button>'+
+        '<button class="btn" id="btn-share-backup">Compartir / Guardar en Drive…</button>'+
       '</div>'+
       '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">'+
         '<label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">'+
@@ -1110,6 +1111,33 @@ function wireRespaldoTab(){
       showToast('Copia de seguridad descargada.');
     }catch(e){ console.error(e); showToast('No se pudo generar la copia de seguridad.'); }
     btn.disabled = false; btn.textContent = 'Descargar copia de seguridad (.json)';
+  });
+
+  document.getElementById('btn-share-backup').addEventListener('click', async function(){
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Preparando…';
+    try{
+      var backup = await collectFullBackup();
+      var stamp = todayISO();
+      var fileName = 'wds-finance-backup-'+stamp+'.json';
+      var file = new File([JSON.stringify(backup)], fileName, {type:'application/json'});
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:'Copia de seguridad WDS Finance', text:'Copia de seguridad del '+stamp});
+      } else {
+        // Sin soporte para compartir archivos: se descarga normalmente y se avisa cómo subirlo a Drive a mano.
+        var blob = new Blob([JSON.stringify(backup)], {type:'application/json'});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = fileName;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+        showToast('Su navegador no admite compartir directo: se descargó a Descargas. Ábralo desde la app de Drive para subirlo.');
+      }
+    }catch(e){
+      if(e && e.name === 'AbortError'){ /* el usuario cerró el selector, no es un error */ }
+      else { console.error(e); showToast('No se pudo compartir la copia de seguridad.'); }
+    }
+    btn.disabled = false; btn.textContent = 'Compartir / Guardar en Drive…';
   });
 
   var fileInput = document.getElementById('import-file');
