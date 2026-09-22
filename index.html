@@ -1076,13 +1076,12 @@ function renderRespaldoTab(){
 }
 
 async function collectFullBackup(){
-  var images = {};
   var withImg = state.transactions.filter(function(t){ return t.hasImage; });
-  for(var i=0;i<withImg.length;i++){
-    var t = withImg[i];
-    var dataUrl = await getImage(t.id);
-    if(dataUrl) images[t.id] = dataUrl;
-  }
+  var results = await Promise.all(withImg.map(function(t){
+    return getImage(t.id).then(function(dataUrl){ return {id:t.id, dataUrl:dataUrl}; });
+  }));
+  var images = {};
+  results.forEach(function(r){ if(r.dataUrl) images[r.id] = r.dataUrl; });
   return {
     app:'WDS Finance', version:1, exportedAt:new Date().toISOString(),
     accounts: state.accounts, catIncome: state.catIncome, catExpense: state.catExpense,
@@ -1096,6 +1095,12 @@ function wireRespaldoTab(){
     try{ await storage.set('auto_backup_enabled', autoBackupEnabled ? 'true' : 'false', false); }catch(e){ console.error(e); }
     showToast(autoBackupEnabled ? 'Respaldo automático diario activado.' : 'Respaldo automático diario desactivado.');
   });
+
+  // Se prepara la copia de seguridad de una vez al entrar a la pestaña, para que
+  // "Compartir" pueda abrirse al instante (Android exige que sea casi inmediato
+  // después del toque, o cancela la acción de compartir).
+  var preparedBackupPromise = collectFullBackup();
+
   document.getElementById('btn-export').addEventListener('click', async function(){
     var btn = this;
     btn.disabled = true; btn.textContent = 'Preparando…';
@@ -1115,16 +1120,14 @@ function wireRespaldoTab(){
 
   document.getElementById('btn-share-backup').addEventListener('click', async function(){
     var btn = this;
-    btn.disabled = true; btn.textContent = 'Preparando…';
     try{
-      var backup = await collectFullBackup();
+      var backup = await preparedBackupPromise; // ya lista en la mayoría de los casos: no rompe el gesto del toque
       var stamp = todayISO();
       var fileName = 'wds-finance-backup-'+stamp+'.json';
       var file = new File([JSON.stringify(backup)], fileName, {type:'application/json'});
       if(navigator.canShare && navigator.canShare({files:[file]})){
         await navigator.share({files:[file], title:'Copia de seguridad WDS Finance', text:'Copia de seguridad del '+stamp});
       } else {
-        // Sin soporte para compartir archivos: se descarga normalmente y se avisa cómo subirlo a Drive a mano.
         var blob = new Blob([JSON.stringify(backup)], {type:'application/json'});
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
@@ -1135,9 +1138,12 @@ function wireRespaldoTab(){
       }
     }catch(e){
       if(e && e.name === 'AbortError'){ /* el usuario cerró el selector, no es un error */ }
-      else { console.error(e); showToast('No se pudo compartir la copia de seguridad.'); }
+      else {
+        console.error(e);
+        showToast('No se pudo abrir el selector para compartir. Use "Descargar copia de seguridad" y compártalo desde la carpeta Descargas.');
+      }
     }
-    btn.disabled = false; btn.textContent = 'Compartir / Guardar en Drive…';
+    preparedBackupPromise = collectFullBackup(); // refrescar para el próximo toque
   });
 
   var fileInput = document.getElementById('import-file');
