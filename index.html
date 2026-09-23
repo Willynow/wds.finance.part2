@@ -361,7 +361,8 @@ var ui = {
   tab:'resumen',
   filters:{ account:'all', kind:'all', from:'', to:'', q:'' },
   transferFilters:{ account:'all' },
-  pendingDeleteKey:null
+  pendingDeleteKey:null,
+  quickActionAccountId:null
 };
 var modalState = {};
 var autoBackupEnabled = true;
@@ -861,10 +862,18 @@ function renderAccountCard(a){
   } else {
     delBtn = '<button class="btn btn-ghost btn-sm" data-action="delete-acc" data-id="'+a.id+'">Eliminar</button>';
   }
+  var quickActions = '';
+  if(ui.quickActionAccountId === a.id){
+    quickActions = '<div class="row-actions" style="margin-top:8px;">'+
+      '<button class="btn btn-danger btn-sm" data-action="quick-expense" data-id="'+a.id+'">Gasto</button>'+
+      '<button class="btn btn-primary btn-sm" data-action="quick-income" data-id="'+a.id+'">Ingreso</button>'+
+    '</div>';
+  }
   return '<div class="acct-card">'+
-    '<div style="font-weight:700;">'+esc(a.name)+'</div>'+
+    '<button type="button" class="btn-link" style="font-weight:700;font-size:15px;text-align:left;padding:0;text-decoration:none;color:var(--ink);" data-action="toggle-quick" data-id="'+a.id+'">'+esc(a.name)+'</button>'+
     '<div style="font-size:12px;color:var(--ink-muted);">'+esc(a.currency)+' · Saldo inicial '+fmtCurrency(a.initialBalance,a.currency)+'</div>'+
     '<div class="num" style="font-size:20px;font-weight:700;margin-top:4px;'+(bal<0?'color:var(--expense);':'')+'">'+fmtCurrency(bal,a.currency)+'</div>'+
+    quickActions+
     '<div class="row-actions" style="margin-top:8px;">'+
       '<button class="btn btn-ghost btn-sm" data-action="edit-acc" data-id="'+a.id+'">Editar</button>'+delBtn+
     '</div>'+
@@ -872,6 +881,25 @@ function renderAccountCard(a){
 }
 function wireCuentasTab(){
   document.getElementById('btn-new-account').addEventListener('click', function(){ openAccountModal(); });
+  document.querySelectorAll('[data-action="toggle-quick"]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var id = btn.getAttribute('data-id');
+      ui.quickActionAccountId = (ui.quickActionAccountId === id) ? null : id;
+      renderApp();
+    });
+  });
+  document.querySelectorAll('[data-action="quick-expense"]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      ui.quickActionAccountId = null;
+      openTxModal({type:'expense', presetAccountId: btn.getAttribute('data-id')});
+    });
+  });
+  document.querySelectorAll('[data-action="quick-income"]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      ui.quickActionAccountId = null;
+      openTxModal({type:'income', presetAccountId: btn.getAttribute('data-id')});
+    });
+  });
   document.querySelectorAll('[data-action="edit-acc"]').forEach(function(btn){
     btn.addEventListener('click', function(){
       var acc = getAccount(btn.getAttribute('data-id'));
@@ -1014,42 +1042,42 @@ function renderRespaldoTab(){
   var totalImgs = state.transactions.filter(function(t){ return t.hasImage; }).length;
   return '<div class="page-head"><h2>Copia de seguridad</h2></div>'+
     '<div class="card">'+
-      '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">'+
+      '<p style="color:#000;font-size:16.5px;margin-top:0;">'+
         'Los datos se guardan únicamente en este dispositivo y este navegador. Si borra los datos del navegador, cambia de dispositivo o desinstala la app, esta información se pierde. '+
         'Descargue una copia de seguridad periódicamente (por ejemplo, cada semana) y guárdela en un lugar seguro (correo, Google Drive, etc.).'+
       '</p>'+
-      '<p style="font-size:13px;"><strong>'+state.accounts.length+'</strong> cuentas · <strong>'+state.transactions.length+'</strong> movimientos registrados · <strong>'+totalImgs+'</strong> con imagen adjunta.</p>'+
+      '<p style="font-size:16px;color:#000;"><strong>'+state.accounts.length+'</strong> cuentas · <strong>'+state.transactions.length+'</strong> movimientos registrados · <strong>'+totalImgs+'</strong> con imagen adjunta.</p>'+
       '<div class="row-actions" style="margin-top:14px;">'+
         '<button class="btn btn-primary" id="btn-export">Descargar copia de seguridad (.json)</button>'+
       '</div>'+
-      '<p style="font-size:12.5px;color:var(--ink-muted);margin-top:8px;">Para guardarlo en Google Drive: abra la app "Archivos" de su tablet, busque el archivo en Descargas, y use su opción "Compartir" para elegir Drive.</p>'+
+      '<p style="font-size:15.5px;color:#000;margin-top:8px;">Para guardarlo en Google Drive: abra la app "Archivos" de su tablet, busque el archivo en Descargas, y use su opción "Compartir" para elegir Drive.</p>'+
       '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">'+
-        '<label style="display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink);">'+
+        '<label style="display:flex;align-items:center;gap:8px;font-weight:500;color:#000;font-size:16px;">'+
           '<input type="checkbox" id="auto-backup-toggle" style="width:auto;" '+(autoBackupEnabled?'checked':'')+'> Guardar automáticamente una copia en "Descargas" una vez al día'+
         '</label>'+
       '</div>'+
     '</div>'+
     '<div class="card" style="margin-top:16px;">'+
       '<h3 style="margin-bottom:8px;">Restaurar copia de seguridad</h3>'+
-      '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">Esto reemplazará TODOS los datos actuales de la app por los del archivo seleccionado.</p>'+
+      '<p style="color:#000;font-size:16.5px;margin-top:0;">Esto reemplazará TODOS los datos actuales de la app por los del archivo seleccionado.</p>'+
       '<input type="file" accept="application/json,.json" id="import-file">'+
       '<div class="row-actions" style="margin-top:10px;"><button class="btn btn-danger" id="btn-import" disabled>Restaurar desde archivo</button></div>'+
     '</div>'+
     '<div class="card" style="margin-top:16px;">'+
       '<h3 style="margin-bottom:6px;">Importar / exportar movimientos (Excel o CSV)</h3>'+
-      '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">Exporte sus movimientos actuales para revisarlos, imprimirlos o enviarlos a su contador; o importe varios ingresos/gastos a la vez desde un archivo .xlsx, .xls o .csv (esto agrega movimientos nuevos, sin borrar los existentes).</p>'+
-      '<p style="color:var(--ink-muted);font-size:12.5px;">Columnas: <strong>Fecha, Tipo, Cuenta, Categoría, Proveedor/Cliente, Descripción, Monto, Notas</strong>. El nombre de la Cuenta debe coincidir exactamente con una cuenta ya creada. Tipo debe ser "Ingreso" o "Gasto".</p>'+
+      '<p style="color:#000;font-size:16.5px;margin-top:0;">Exporte sus movimientos actuales para revisarlos, imprimirlos o enviarlos a su contador; o importe varios ingresos/gastos a la vez desde un archivo .xlsx, .xls o .csv (esto agrega movimientos nuevos, sin borrar los existentes).</p>'+
+      '<p style="color:#000;font-size:15.5px;">Columnas: <strong>Fecha, Tipo, Cuenta, Categoría, Proveedor/Cliente, Descripción, Monto, Notas</strong>. El nombre de la Cuenta debe coincidir exactamente con una cuenta ya creada. Tipo debe ser "Ingreso" o "Gasto".</p>'+
       '<div class="row-actions" style="margin-bottom:12px;">'+
         '<button class="btn btn-primary btn-sm" id="btn-export-movements">Exportar movimientos actuales (.csv)</button>'+
         '<button class="btn btn-sm" id="btn-download-template">Descargar plantilla (.csv)</button>'+
       '</div>'+
       '<input type="file" accept=".csv,.xlsx,.xls" id="bulk-import-file">'+
-      '<div id="bulk-import-status" style="margin-top:10px;font-size:13.5px;color:var(--ink-muted);"></div>'+
+      '<div id="bulk-import-status" style="margin-top:10px;font-size:16.5px;color:#000;"></div>'+
       '<div id="bulk-import-preview"></div>'+
     '</div>'+
     '<div class="card" style="margin-top:16px;">'+
       '<h3 style="margin-bottom:6px;">Borrar un conjunto de movimientos</h3>'+
-      '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">Elimine solo los movimientos que coincidan con los filtros de abajo. Las cuentas, categorías y proveedores no se ven afectados.</p>'+
+      '<p style="color:#000;font-size:16.5px;margin-top:0;">Elimine solo los movimientos que coincidan con los filtros de abajo. Las cuentas, categorías y proveedores no se ven afectados.</p>'+
       '<div class="filters-bar">'+
         '<div class="field"><label>Cuenta</label><select id="del-flt-account"><option value="all">Todas las cuentas</option>'+
           state.accounts.map(function(a){ return '<option value="'+a.id+'">'+esc(a.name)+'</option>'; }).join('')+
@@ -1064,12 +1092,12 @@ function renderRespaldoTab(){
         '<div class="field"><label>Desde</label><input type="date" id="del-flt-from"></div>'+
         '<div class="field"><label>Hasta</label><input type="date" id="del-flt-to"></div>'+
       '</div>'+
-      '<div id="del-flt-count" style="font-size:13.5px;color:var(--ink-muted);margin-bottom:10px;"></div>'+
+      '<div id="del-flt-count" style="font-size:16px;color:#000;margin-bottom:10px;"></div>'+
       '<div id="del-flt-actions" class="row-actions"></div>'+
     '</div>'+
     '<div class="card" style="margin-top:16px;border-color:var(--expense);">'+
       '<h3 style="margin-bottom:6px;color:var(--expense);">Borrar TODOS los datos de la app</h3>'+
-      '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">Esto elimina cuentas, movimientos, transferencias, categorías, proveedores e imágenes, y deja la app como recién instalada. Esta acción no se puede deshacer. Descargue una copia de seguridad antes si no está seguro.</p>'+
+      '<p style="color:#000;font-size:16.5px;margin-top:0;">Esto elimina cuentas, movimientos, transferencias, categorías, proveedores e imágenes, y deja la app como recién instalada. Esta acción no se puede deshacer. Descargue una copia de seguridad antes si no está seguro.</p>'+
       '<div class="field" style="max-width:320px;"><label>Escriba BORRAR TODO para habilitar el botón</label><input type="text" id="wipe-confirm-input" placeholder="BORRAR TODO"></div>'+
       '<div class="row-actions"><button class="btn btn-danger" id="btn-wipe-all" disabled>Borrar todos los datos</button></div>'+
     '</div>';
@@ -1551,7 +1579,7 @@ function openTxModal(opts){
   opts = opts || {};
   var type = opts.type || 'income';
   var editing = opts.editing || null;
-  modalState = { pendingImage: null, preserved:{} };
+  modalState = { pendingImage: null, preserved:{}, presetAccountId: opts.presetAccountId || null };
 
   // preservar valores comunes al cambiar de tipo dentro del modal (sin volver a abrir editando)
   if(!editing){
@@ -1600,7 +1628,7 @@ function buildTxModalHtml(type, editing){
   if(type==='income' || type==='expense'){
     var catList = type==='income' ? state.catIncome : state.catExpense;
     var partyLabel = type==='income' ? 'Cliente (opcional)' : 'Proveedor (opcional)';
-    var selAccount = editing ? editing.accountId : (state.accounts[0] ? state.accounts[0].id : '');
+    var selAccount = editing ? editing.accountId : (modalState.presetAccountId || (state.accounts[0] ? state.accounts[0].id : ''));
     var selAcc = getAccount(selAccount);
     fieldsHtml =
       '<div class="field"><label>Cuenta bancaria</label><select id="f-account">'+accountOptionsHtml(selAccount)+'</select><div class="field-error">Seleccione una cuenta.</div></div>'+
@@ -1661,12 +1689,10 @@ function rebuildSelectOptions(selectId, list, selectValue){
 }
 
 function wireTxModal(type, editing){
+  var currentPresetAccountId = modalState.presetAccountId;
   document.querySelectorAll('[data-switch-type]').forEach(function(btn){
     btn.addEventListener('click', function(){
-      // preservar campos comunes antes de reconstruir
-      var d=document.getElementById('f-date'), n=document.getElementById('f-notes'), am=document.getElementById('f-amount');
-      modalState.preserved = { date: d?d.value:'', notes: n?n.value:'', amount: am?am.value:'' };
-      openTxModal({type: btn.getAttribute('data-switch-type'), editing: editing});
+      openTxModal({type: btn.getAttribute('data-switch-type'), editing: editing, presetAccountId: currentPresetAccountId});
     });
   });
   document.getElementById('tx-cancel').addEventListener('click', closeModal);
