@@ -11,6 +11,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <style>
   :root{
     --bg:#F5F3EC;
@@ -362,7 +363,9 @@ var ui = {
   filters:{ account:'all', kind:'all', from:'', to:'', q:'' },
   transferFilters:{ account:'all' },
   pendingDeleteKey:null,
-  quickActionAccountId:null
+  quickActionAccountId:null,
+  chartType:'barras',
+  chartMonth: null
 };
 var modalState = {};
 var autoBackupEnabled = true;
@@ -498,6 +501,7 @@ function renderApp(){
           navItem('resumen','Resumen')+
           navItem('movimientos','Movimientos')+
           navItem('transferencias','Transferencias')+
+          navItem('graficos','Gráficos')+
           navItem('cuentas','Cuentas')+
           navItem('categorias','Categorías')+
           navItem('proveedores','Proveedores')+
@@ -547,6 +551,7 @@ function renderTabContent(){
   switch(ui.tab){
     case 'movimientos': return renderMovimientosTab();
     case 'transferencias': return renderTransferenciasTab();
+    case 'graficos': return renderGraficosTab();
     case 'cuentas': return renderCuentasTab();
     case 'categorias': return renderCategoriasTab();
     case 'proveedores': return renderProveedoresTab();
@@ -558,6 +563,7 @@ function renderTabContent(){
 function wireTabContentEvents(){
   if(ui.tab==='movimientos') wireMovimientosTab();
   else if(ui.tab==='transferencias') wireTransferenciasTab();
+  else if(ui.tab==='graficos') wireGraficosTab();
   else if(ui.tab==='cuentas') wireCuentasTab();
   else if(ui.tab==='categorias') wireCategoriasTab();
   else if(ui.tab==='proveedores') wireProveedoresTab();
@@ -1033,6 +1039,147 @@ function wireProveedoresTab(){
     if(state.suppliers.indexOf(val)===-1) state.suppliers.push(val);
     await persist('suppliers'); renderApp(); showToast('Agregado a la lista.');
   });
+}
+
+/* ---------------------------------------------------------
+   GRÁFICOS (gastos en colones por concepto, por mes)
+--------------------------------------------------------- */
+var GRAFICOS_UMBRAL = 10000; // conceptos que sumen menos que esto en el mes van a "Varios"
+var GRAFICOS_COLORES = ['#155F4A','#B23E28','#33547A','#C08A2E','#6B4E9E','#1E7A9E','#8A5A44','#4E8A5A','#A24E7E','#5A6B4E','#9E5A1E','#3E6B8A'];
+
+function currentYearMonth(){ return todayISO().slice(0,7); }
+
+function computeExpenseByConceptoCRC(ym){
+  var totals = {};
+  state.transactions.forEach(function(t){
+    if(t.kind !== 'expense') return;
+    if(!t.date || t.date.slice(0,7) !== ym) return;
+    var acc = getAccount(t.accountId);
+    if(!acc || acc.currency !== 'CRC') return;
+    var cat = (t.category && t.category.trim()) ? t.category.trim() : 'Sin categoría';
+    totals[cat] = (totals[cat]||0) + t.amount;
+  });
+  var mainEntries = [];
+  var variosTotal = 0;
+  Object.keys(totals).forEach(function(cat){
+    if(totals[cat] < GRAFICOS_UMBRAL){ variosTotal += totals[cat]; }
+    else { mainEntries.push({label:cat, value: Math.round(totals[cat]*100)/100}); }
+  });
+  if(variosTotal > 0){
+    variosTotal = Math.round(variosTotal*100)/100;
+    var existingVarios = mainEntries.filter(function(e){ return e.label === 'Varios'; })[0];
+    if(existingVarios){ existingVarios.value = Math.round((existingVarios.value+variosTotal)*100)/100; }
+    else { mainEntries.push({label:'Varios', value: variosTotal}); }
+  }
+  mainEntries.sort(function(a,b){ return b.value - a.value; });
+  return mainEntries;
+}
+
+function renderGraficosTab(){
+  var ym = ui.chartMonth || currentYearMonth();
+  ui.chartMonth = ym;
+  return '<div class="page-head"><h2>Gráficos de gastos</h2></div>'+
+    '<div class="card">'+
+      '<p style="color:#000;font-size:15px;margin-top:0;">Gastos en colones (₡) por concepto, para el mes elegido. Los conceptos que sumen menos de '+fmtCurrency(GRAFICOS_UMBRAL,'CRC')+' en el mes se agrupan en "Varios".</p>'+
+      '<div class="filters-bar">'+
+        '<div class="field"><label>Mes</label><input type="month" id="chart-month" value="'+esc(ym)+'"></div>'+
+      '</div>'+
+      '<div class="segmented" style="max-width:420px;">'+
+        '<button type="button" data-chart-type="lineal" class="'+(ui.chartType==='lineal'?'active':'')+'">Lineal</button>'+
+        '<button type="button" data-chart-type="barras" class="'+(ui.chartType==='barras'?'active':'')+'">Barras</button>'+
+        '<button type="button" data-chart-type="pastel" class="'+(ui.chartType==='pastel'?'active':'')+'">Pastel</button>'+
+      '</div>'+
+      '<div id="chart-container"></div>'+
+    '</div>';
+}
+
+var expenseChartInstance = null;
+
+function renderChartContainer(){
+  var container = document.getElementById('chart-container');
+  if(!container) return;
+  var ym = ui.chartMonth || currentYearMonth();
+  var data = computeExpenseByConceptoCRC(ym);
+
+  if(typeof Chart === 'undefined'){
+    container.innerHTML = '<div class="empty-state">No se pudo cargar el motor de gráficos (se necesita conexión a internet la primera vez). Conecte la tablet a internet y vuelva a intentar.</div>';
+    return;
+  }
+  if(data.length === 0){
+    container.innerHTML = '<div class="empty-state">No hay gastos en colones registrados para ese mes.</div>';
+    return;
+  }
+
+  var total = data.reduce(function(s,d){ return s+d.value; }, 0);
+  var tableRows = data.map(function(d, i){
+    var pct = total>0 ? (d.value/total*100) : 0;
+    return '<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:'+GRAFICOS_COLORES[i%GRAFICOS_COLORES.length]+';margin-right:8px;"></span>'+esc(d.label)+'</td>'+
+      '<td class="num">'+fmtCurrency(d.value,'CRC')+'</td><td class="num">'+pct.toFixed(1)+'%</td></tr>';
+  }).join('');
+
+  container.innerHTML =
+    '<div style="position:relative;height:360px;margin-top:16px;"><canvas id="expense-chart"></canvas></div>'+
+    '<table style="margin-top:18px;"><thead><tr><th>Concepto</th><th>Monto</th><th>%</th></tr></thead><tbody>'+tableRows+
+    '<tr><td style="font-weight:700;">Total</td><td class="num" style="font-weight:700;">'+fmtCurrency(total,'CRC')+'</td><td></td></tr>'+
+    '</tbody></table>';
+
+  var labels = data.map(function(d){ return d.label; });
+  var values = data.map(function(d){ return d.value; });
+  var colors = data.map(function(d,i){ return GRAFICOS_COLORES[i%GRAFICOS_COLORES.length]; });
+  var cfgType = ui.chartType === 'lineal' ? 'line' : ui.chartType === 'pastel' ? 'pie' : 'bar';
+
+  if(expenseChartInstance){ expenseChartInstance.destroy(); expenseChartInstance = null; }
+  var ctx = document.getElementById('expense-chart').getContext('2d');
+  expenseChartInstance = new Chart(ctx, {
+    type: cfgType,
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Gastos (₡)',
+        data: values,
+        backgroundColor: cfgType === 'line' ? 'rgba(21,95,74,0.15)' : colors,
+        borderColor: cfgType === 'line' ? '#155F4A' : colors,
+        borderWidth: cfgType === 'pastel' || cfgType === 'pie' ? 1 : 2,
+        fill: cfgType === 'line',
+        tension: 0.25,
+        pointBackgroundColor: '#155F4A'
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: cfgType === 'pie' },
+        tooltip: {
+          callbacks: {
+            label: function(ctx){
+              var val = (ctx.parsed && typeof ctx.parsed === 'object') ? ctx.parsed.y : ctx.parsed;
+              return ctx.label + ': ' + fmtCurrency(val, 'CRC');
+            }
+          }
+        }
+      },
+      scales: cfgType === 'pie' ? {} : {
+        y: { beginAtZero:true, ticks:{ callback:function(v){ return fmtCurrency(v,'CRC'); } } }
+      }
+    }
+  });
+}
+
+function wireGraficosTab(){
+  document.getElementById('chart-month').addEventListener('change', function(){
+    ui.chartMonth = this.value;
+    renderChartContainer();
+  });
+  document.querySelectorAll('[data-chart-type]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      ui.chartType = btn.getAttribute('data-chart-type');
+      document.querySelectorAll('[data-chart-type]').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      renderChartContainer();
+    });
+  });
+  renderChartContainer();
 }
 
 /* ---------------------------------------------------------
