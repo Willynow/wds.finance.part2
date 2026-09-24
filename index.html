@@ -619,7 +619,10 @@ function renderResumenTab(){
         recent.map(renderCompactRow).join('')+
       '</tbody></table>';
 
-  return '<div class="page-head"><h2>Resumen</h2></div>'+
+  return '<div class="page-head"><h2>Resumen</h2>'+
+      '<img id="exec-avatar" src="circulo_ejecutivo.png" alt="Mensaje del asesor" title="Ver mensaje en video" '+
+        'style="width:60px;height:60px;border-radius:50%;cursor:pointer;border:2px solid var(--line);object-fit:cover;flex-shrink:0;">'+
+    '</div>'+
     monthCards+
     '<div class="card"><h3 style="margin-bottom:12px;">Movimientos recientes</h3>'+recentHtml+'</div>';
 }
@@ -634,7 +637,24 @@ function renderCompactRow(t){
   return '<tr><td>'+fmtDate(t.date)+'</td><td>'+badge+'</td><td>'+esc(acc.name)+'</td><td>'+esc(desc)+'</td>'+
     '<td class="num '+amtClass+'">'+sign+fmtCurrency(t.amount, acc.currency)+'</td></tr>';
 }
-function wireResumenTab(){ /* sin listeners adicionales */ }
+function wireResumenTab(){
+  var avatar = document.getElementById('exec-avatar');
+  if(avatar) avatar.addEventListener('click', openVideoModal);
+}
+
+function openVideoModal(){
+  var root = document.getElementById('modal-root');
+  root.innerHTML = '<div class="modal-panel img-modal-panel" style="max-width:640px;">'+
+    '<video src="video-ejecutivo.mp4" controls autoplay style="width:100%;border-radius:10px;background:#000;display:block;"></video>'+
+    '<button class="btn" id="video-modal-close" style="margin-top:14px;">Cerrar</button>'+
+  '</div>';
+  root.classList.add('open');
+  document.getElementById('video-modal-close').addEventListener('click', function(){
+    var v = root.querySelector('video');
+    if(v){ v.pause(); }
+    closeModal();
+  });
+}
 
 /* ---------------------------------------------------------
    MOVIMIENTOS (ingresos y gastos)
