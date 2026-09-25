@@ -354,10 +354,11 @@ var KEYS = {
   catIncome: 'categories_income',
   catExpense: 'categories_expense',
   suppliers: 'suppliers',
-  transactions: 'transactions'
+  transactions: 'transactions',
+  recurring: 'recurring_templates'
 };
 
-var state = { accounts:[], catIncome:[], catExpense:[], suppliers:[], transactions:[] };
+var state = { accounts:[], catIncome:[], catExpense:[], suppliers:[], transactions:[], recurring:[] };
 var ui = {
   tab:'resumen',
   filters:{ account:'all', kind:'all', from:'', to:'', q:'' },
@@ -365,7 +366,8 @@ var ui = {
   pendingDeleteKey:null,
   quickActionAccountId:null,
   chartType:'barras',
-  chartMonth: null
+  chartMonth: null,
+  recurringMonth: null
 };
 var modalState = {};
 var autoBackupEnabled = true;
@@ -382,7 +384,14 @@ function defaultData(){
     catIncome: ['Ventas','Servicios prestados','Ingresos financieros','Otros ingresos'],
     catExpense: ['Compras a proveedores','Servicios públicos','Alquiler','Planilla y salarios','Transporte','Otros gastos'],
     suppliers: [],
-    transactions: []
+    transactions: [],
+    recurring: [
+      {id:uid(), name:'Condominio', category:'Repar.yMantmto Hogar', party:'Condom.Bosque Real', defaultAmount:82267},
+      {id:uid(), name:'Seguro Social', category:'Seguro Social', party:'Caja SSO', defaultAmount:15034},
+      {id:uid(), name:'Telecable', category:'Entretenimiento', party:'Telecable', defaultAmount:16883.75},
+      {id:uid(), name:'Electricidad', category:'Electricidad CNFL', party:'Elect CNFL', defaultAmount:25910},
+      {id:uid(), name:'Teléfono', category:'Telefono', party:'Movistar Liberty', defaultAmount:12287.38}
+    ]
   };
 }
 
@@ -502,6 +511,7 @@ function renderApp(){
           navItem('movimientos','Movimientos')+
           navItem('transferencias','Transferencias')+
           navItem('graficos','Gráficos')+
+          navItem('recurrentes','Recurrentes')+
           navItem('cuentas','Cuentas')+
           navItem('categorias','Categorías')+
           navItem('proveedores','Proveedores')+
@@ -552,6 +562,7 @@ function renderTabContent(){
     case 'movimientos': return renderMovimientosTab();
     case 'transferencias': return renderTransferenciasTab();
     case 'graficos': return renderGraficosTab();
+    case 'recurrentes': return renderRecurrentesTab();
     case 'cuentas': return renderCuentasTab();
     case 'categorias': return renderCategoriasTab();
     case 'proveedores': return renderProveedoresTab();
@@ -564,6 +575,7 @@ function wireTabContentEvents(){
   if(ui.tab==='movimientos') wireMovimientosTab();
   else if(ui.tab==='transferencias') wireTransferenciasTab();
   else if(ui.tab==='graficos') wireGraficosTab();
+  else if(ui.tab==='recurrentes') wireRecurrentesTab();
   else if(ui.tab==='cuentas') wireCuentasTab();
   else if(ui.tab==='categorias') wireCategoriasTab();
   else if(ui.tab==='proveedores') wireProveedoresTab();
@@ -1259,6 +1271,161 @@ function wireGraficosTab(){
     });
   });
   renderChartContainer();
+}
+
+/* ---------------------------------------------------------
+   RECURRENTES (movimientos que se repiten cada mes)
+--------------------------------------------------------- */
+var PORPAGAR_ACCOUNT_NAME = 'Por Pagar';
+
+async function ensurePorPagarAccount(){
+  var acc = state.accounts.filter(function(a){ return a.name.trim().toLowerCase() === PORPAGAR_ACCOUNT_NAME.toLowerCase(); })[0];
+  if(acc) return acc;
+  acc = {id:uid(), name:PORPAGAR_ACCOUNT_NAME, currency:'CRC', initialBalance:0};
+  state.accounts.push(acc);
+  await persist('accounts');
+  return acc;
+}
+
+function renderRecurrentesTab(){
+  var ym = ui.recurringMonth || currentYearMonth();
+  ui.recurringMonth = ym;
+  var listHtml = state.recurring.length===0
+    ? '<div class="empty-state">Aún no hay movimientos recurrentes definidos.</div>'
+    : '<table><thead><tr><th>Concepto</th><th>Categoría</th><th>Proveedor</th><th>Monto sugerido</th><th></th></tr></thead><tbody>'+
+        state.recurring.map(renderRecurringRow).join('')+
+      '</tbody></table>';
+
+  return '<div class="page-head"><h2>Movimientos recurrentes</h2>'+
+      '<button class="btn btn-primary" id="btn-new-recurring">+ Agregar recurrente</button>'+
+    '</div>'+
+    '<div class="card">'+
+      '<p style="color:#000;font-size:16px;margin-top:0;">Estas plantillas se usan para generar, con un toque, los gastos fijos de cada mes en la cuenta <strong>"'+PORPAGAR_ACCOUNT_NAME+'"</strong>. Luego, cuando los pague, edite cada movimiento y cámbiele la cuenta bancaria correspondiente.</p>'+
+      listHtml+
+    '</div>'+
+    '<div class="card" style="margin-top:16px;">'+
+      '<h3 style="margin-bottom:10px;">Generar movimientos del mes</h3>'+
+      '<div class="filters-bar"><div class="field"><label>Mes a generar</label><input type="month" id="recurring-month" value="'+esc(ym)+'"></div></div>'+
+      '<div class="row-actions"><button class="btn btn-primary" id="btn-generate-recurring" '+(state.recurring.length===0?'disabled':'')+'>Generar movimientos de ese mes</button></div>'+
+      '<div id="recurring-generate-status" style="margin-top:10px;font-size:15px;color:#000;"></div>'+
+    '</div>';
+}
+
+function renderRecurringRow(r){
+  var key = 'rec-'+r.id;
+  var actions;
+  if(ui.pendingDeleteKey===key){
+    actions = '<button class="btn btn-danger btn-sm" data-action="confirm-delete-rec" data-id="'+r.id+'">Confirmar</button>'+
+              '<button class="btn btn-sm" data-action="cancel-delete-rec">Cancelar</button>';
+  } else {
+    actions = '<button class="btn btn-ghost btn-sm" data-action="edit-rec" data-id="'+r.id+'">Editar</button>'+
+              '<button class="btn btn-ghost btn-sm" data-action="delete-rec" data-id="'+r.id+'">Eliminar</button>';
+  }
+  return '<tr><td>'+esc(r.name)+'</td><td>'+esc(r.category)+'</td><td>'+esc(r.party||'—')+'</td>'+
+    '<td class="num">'+fmtCurrency(r.defaultAmount,'CRC')+'</td><td><div class="row-actions">'+actions+'</div></td></tr>';
+}
+
+function wireRecurrentesTab(){
+  document.getElementById('btn-new-recurring').addEventListener('click', function(){ openRecurringModal(); });
+  document.querySelectorAll('[data-action="edit-rec"]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var r = state.recurring.filter(function(x){ return x.id===btn.getAttribute('data-id'); })[0];
+      if(r) openRecurringModal(r);
+    });
+  });
+  document.querySelectorAll('[data-action="delete-rec"]').forEach(function(btn){
+    btn.addEventListener('click', function(){ ui.pendingDeleteKey='rec-'+btn.getAttribute('data-id'); renderApp(); });
+  });
+  document.querySelectorAll('[data-action="cancel-delete-rec"]').forEach(function(btn){
+    btn.addEventListener('click', function(){ ui.pendingDeleteKey=null; renderApp(); });
+  });
+  document.querySelectorAll('[data-action="confirm-delete-rec"]').forEach(function(btn){
+    btn.addEventListener('click', async function(){
+      var id = btn.getAttribute('data-id');
+      state.recurring = state.recurring.filter(function(r){ return r.id!==id; });
+      await persist('recurring');
+      ui.pendingDeleteKey = null;
+      renderApp();
+      showToast('Recurrente eliminado.');
+    });
+  });
+
+  document.getElementById('recurring-month').addEventListener('change', function(){
+    ui.recurringMonth = this.value;
+  });
+
+  document.getElementById('btn-generate-recurring').addEventListener('click', async function(){
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Generando…';
+    var statusBox = document.getElementById('recurring-generate-status');
+    try{
+      var ym = document.getElementById('recurring-month').value || currentYearMonth();
+      var porPagar = await ensurePorPagarAccount();
+      var created = 0, skipped = [];
+      for(var i=0;i<state.recurring.length;i++){
+        var r = state.recurring[i];
+        var yaExiste = state.transactions.some(function(t){
+          return t.kind==='expense' && t.accountId===porPagar.id && t.category===r.category && t.date && t.date.slice(0,7)===ym;
+        });
+        if(yaExiste){ skipped.push(r.name); continue; }
+        if(r.category && state.catExpense.indexOf(r.category)===-1) state.catExpense.push(r.category);
+        if(r.party && state.suppliers.indexOf(r.party)===-1) state.suppliers.push(r.party);
+        state.transactions.push({
+          id: uid(), kind:'expense', date: ym+'-01', accountId: porPagar.id,
+          category: r.category, party: r.party || '', amount: Math.round((r.defaultAmount||0)*100)/100,
+          description: 'Pago '+r.name+' '+monthLabelEs(ym), notes:'', hasImage:false
+        });
+        created++;
+      }
+      await persist('catExpense'); await persist('suppliers'); await persist('transactions');
+      var msg = created+' movimiento(s) generado(s) en "'+PORPAGAR_ACCOUNT_NAME+'".';
+      if(skipped.length>0) msg += ' Ya existían y se omitieron: '+skipped.join(', ')+'.';
+      statusBox.textContent = msg;
+      showToast(created>0 ? 'Movimientos generados en "'+PORPAGAR_ACCOUNT_NAME+'".' : 'No se generó ningún movimiento nuevo (ya existían).');
+      if(created>0){
+        ui.tab = 'movimientos';
+        ui.filters.account = porPagar.id;
+        renderApp();
+        return;
+      }
+    }catch(e){ console.error(e); showToast('Ocurrió un error al generar los movimientos.'); }
+    btn.disabled = false; btn.textContent = 'Generar movimientos de ese mes';
+  });
+}
+
+function openRecurringModal(existing){
+  var root = document.getElementById('modal-root');
+  root.innerHTML = '<div class="modal-panel">'+
+    '<h3>'+(existing? 'Editar recurrente':'Agregar recurrente')+'</h3>'+
+    '<div class="field"><label>Concepto</label><input type="text" id="rf-name" value="'+esc(existing? existing.name:'')+'" placeholder="Ej. Condominio"><div class="field-error">Ingrese un nombre.</div></div>'+
+    '<div class="field"><label>Categoría</label><input type="text" id="rf-category" value="'+esc(existing? existing.category:'')+'" placeholder="Ej. Servicios públicos"><div class="field-error">Ingrese una categoría.</div></div>'+
+    '<div class="field"><label>Proveedor (opcional)</label><input type="text" id="rf-party" value="'+esc(existing? existing.party:'')+'" placeholder="Ej. Condom.Bosque Real"></div>'+
+    '<div class="field"><label>Monto sugerido (₡)</label><input type="number" step="0.01" min="0" id="rf-amount" value="'+(existing? existing.defaultAmount:'')+'"><div class="field-error">Ingrese un monto válido.</div></div>'+
+    '<div class="modal-foot"><button class="btn" id="rf-cancel">Cancelar</button><button class="btn btn-primary" id="rf-save">Guardar</button></div>'+
+  '</div>';
+  root.classList.add('open');
+  document.getElementById('rf-cancel').addEventListener('click', closeModal);
+  document.getElementById('rf-save').addEventListener('click', async function(){
+    clearFieldErrors(root);
+    var name = document.getElementById('rf-name').value.trim();
+    var category = document.getElementById('rf-category').value.trim();
+    var party = document.getElementById('rf-party').value.trim();
+    var amount = parseFloat(document.getElementById('rf-amount').value);
+    var ok = true;
+    if(!name){ setFieldError('rf-name','Ingrese un nombre.'); ok=false; }
+    if(!category){ setFieldError('rf-category','Ingrese una categoría.'); ok=false; }
+    if(!amount || amount<=0 || isNaN(amount)){ setFieldError('rf-amount','Ingrese un monto válido.'); ok=false; }
+    if(!ok) return;
+    if(existing){
+      existing.name=name; existing.category=category; existing.party=party; existing.defaultAmount=Math.round(amount*100)/100;
+    } else {
+      state.recurring.push({id:uid(), name:name, category:category, party:party, defaultAmount:Math.round(amount*100)/100});
+    }
+    await persist('recurring');
+    closeModal();
+    renderApp();
+    showToast('Recurrente guardado.');
+  });
 }
 
 /* ---------------------------------------------------------
