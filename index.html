@@ -2232,6 +2232,16 @@ function openCalculatorModal(){
 /* ---------------------------------------------------------
    Arranque
 --------------------------------------------------------- */
+document.addEventListener('click', function(e){
+  if(ui.quickActionAccountId == null) return;
+  var t = e.target;
+  if(t.closest && (t.closest('[data-action="toggle-quick"]') || t.closest('[data-action="quick-expense"]') || t.closest('[data-action="quick-income"]'))){
+    return; // dejar que esos botones manejen su propio clic
+  }
+  ui.quickActionAccountId = null;
+  renderApp();
+});
+
 (async function init(){
   await loadState();
   renderApp();
