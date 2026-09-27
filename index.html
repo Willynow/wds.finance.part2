@@ -366,7 +366,10 @@ var ui = {
   pendingDeleteKey:null,
   quickActionAccountId:null,
   chartType:'barras',
+  chartPeriod:'mensual',
   chartMonth: null,
+  chartYear: null,
+  chartQuarter: null,
   recurringMonth: null
 };
 var modalState = {};
@@ -1080,12 +1083,16 @@ var GRAFICOS_UMBRAL = 10000; // conceptos que sumen menos que esto en el mes van
 var GRAFICOS_COLORES = ['#155F4A','#B23E28','#33547A','#C08A2E','#6B4E9E','#1E7A9E','#8A5A44','#4E8A5A','#A24E7E','#5A6B4E','#9E5A1E','#3E6B8A'];
 
 function currentYearMonth(){ return todayISO().slice(0,7); }
+function currentYear(){ return parseInt(todayISO().slice(0,4),10); }
+function currentQuarter(){ return Math.ceil(parseInt(todayISO().slice(5,7),10)/3); }
 
-function computeExpenseByConceptoCRC(ym){
+function computeExpenseByConceptoCRC(fromYm, toYm){
   var totals = {};
   state.transactions.forEach(function(t){
     if(t.kind !== 'expense') return;
-    if(!t.date || t.date.slice(0,7) !== ym) return;
+    if(!t.date) return;
+    var tym = t.date.slice(0,7);
+    if(tym < fromYm || tym > toYm) return;
     var acc = getAccount(t.accountId);
     if(!acc || acc.currency !== 'CRC') return;
     var cat = (t.category && t.category.trim()) ? t.category.trim() : 'Sin categoría';
@@ -1107,15 +1114,64 @@ function computeExpenseByConceptoCRC(ym){
   return mainEntries;
 }
 
-function renderGraficosTab(){
+// Calcula el rango de meses (fromYm..toYm) y la etiqueta a mostrar/imprimir,
+// según el período elegido: mensual, trimestral o anual.
+function currentPeriodRange(){
+  if(ui.chartPeriod === 'trimestral'){
+    var y = ui.chartYear || currentYear();
+    var q = ui.chartQuarter || currentQuarter();
+    var startMonth = (q-1)*3+1;
+    var endMonth = startMonth+2;
+    return {
+      fromYm: y+'-'+pad2(startMonth), toYm: y+'-'+pad2(endMonth),
+      label: 'Trimestre '+q+' ('+MESES_ES[startMonth-1]+'-'+MESES_ES[endMonth-1]+') '+y
+    };
+  }
+  if(ui.chartPeriod === 'anual'){
+    var y2 = ui.chartYear || currentYear();
+    return { fromYm: y2+'-01', toYm: y2+'-12', label: 'Año '+y2 };
+  }
   var ym = ui.chartMonth || currentYearMonth();
-  ui.chartMonth = ym;
+  return { fromYm: ym, toYm: ym, label: monthLabelEs(ym) };
+}
+
+function yearOptionsHtml(selectedYear){
+  var years = [];
+  var base = currentYear();
+  for(var y = base-4; y<=base+1; y++){ years.push(y); }
+  return years.map(function(y){ return '<option value="'+y+'" '+(y===selectedYear?'selected':'')+'>'+y+'</option>'; }).join('');
+}
+
+function renderGraficosTab(){
+  if(!ui.chartMonth) ui.chartMonth = currentYearMonth();
+  if(!ui.chartYear) ui.chartYear = currentYear();
+  if(!ui.chartQuarter) ui.chartQuarter = currentQuarter();
+
+  var periodFields = '';
+  if(ui.chartPeriod === 'trimestral'){
+    periodFields =
+      '<div class="field"><label>Año</label><select id="chart-year">'+yearOptionsHtml(ui.chartYear)+'</select></div>'+
+      '<div class="field"><label>Trimestre</label><select id="chart-quarter">'+
+        [1,2,3,4].map(function(q){
+          var sm=(q-1)*3+1, em=sm+2;
+          return '<option value="'+q+'" '+(q===ui.chartQuarter?'selected':'')+'>Trimestre '+q+' ('+MESES_ES[sm-1]+'-'+MESES_ES[em-1]+')</option>';
+        }).join('')+
+      '</select></div>';
+  } else if(ui.chartPeriod === 'anual'){
+    periodFields = '<div class="field"><label>Año</label><select id="chart-year">'+yearOptionsHtml(ui.chartYear)+'</select></div>';
+  } else {
+    periodFields = '<div class="field"><label>Mes</label><input type="month" id="chart-month" value="'+esc(ui.chartMonth)+'"></div>';
+  }
+
   return '<div class="page-head"><h2>Gráficos de gastos</h2></div>'+
     '<div class="card">'+
-      '<p style="color:#000;font-size:15px;margin-top:0;">Gastos en colones (₡) por concepto, para el mes elegido. Los conceptos que sumen menos de '+fmtCurrency(GRAFICOS_UMBRAL,'CRC')+' en el mes se agrupan en "Varios".</p>'+
-      '<div class="filters-bar">'+
-        '<div class="field"><label>Mes</label><input type="month" id="chart-month" value="'+esc(ym)+'"></div>'+
+      '<p style="color:#000;font-size:15px;margin-top:0;">Gastos en colones (₡) por concepto, para el período elegido. Los conceptos que sumen menos de '+fmtCurrency(GRAFICOS_UMBRAL,'CRC')+' en ese período se agrupan en "Varios".</p>'+
+      '<div class="segmented" style="max-width:420px;margin-bottom:14px;">'+
+        '<button type="button" data-chart-period="mensual" class="'+(ui.chartPeriod==='mensual'?'active':'')+'">Mensual</button>'+
+        '<button type="button" data-chart-period="trimestral" class="'+(ui.chartPeriod==='trimestral'?'active':'')+'">Trimestral</button>'+
+        '<button type="button" data-chart-period="anual" class="'+(ui.chartPeriod==='anual'?'active':'')+'">Anual</button>'+
       '</div>'+
+      '<div class="filters-bar" id="chart-period-fields">'+periodFields+'</div>'+
       '<div class="segmented" style="max-width:420px;">'+
         '<button type="button" data-chart-type="lineal" class="'+(ui.chartType==='lineal'?'active':'')+'">Lineal</button>'+
         '<button type="button" data-chart-type="barras" class="'+(ui.chartType==='barras'?'active':'')+'">Barras</button>'+
@@ -1130,15 +1186,15 @@ var expenseChartInstance = null;
 function renderChartContainer(){
   var container = document.getElementById('chart-container');
   if(!container) return;
-  var ym = ui.chartMonth || currentYearMonth();
-  var data = computeExpenseByConceptoCRC(ym);
+  var period = currentPeriodRange();
+  var data = computeExpenseByConceptoCRC(period.fromYm, period.toYm);
 
   if(typeof Chart === 'undefined'){
     container.innerHTML = '<div class="empty-state">No se pudo cargar el motor de gráficos (se necesita conexión a internet la primera vez). Conecte la tablet a internet y vuelva a intentar.</div>';
     return;
   }
   if(data.length === 0){
-    container.innerHTML = '<div class="empty-state">No hay gastos en colones registrados para ese mes.</div>';
+    container.innerHTML = '<div class="empty-state">No hay gastos en colones registrados para ese período.</div>';
     return;
   }
 
@@ -1206,7 +1262,7 @@ function renderChartContainer(){
     if(!dataUrl){ showToast('No se pudo generar la imagen.'); return; }
     var a = document.createElement('a');
     a.href = dataUrl;
-    a.download = 'gastos-'+ym+'-'+ui.chartType+'.png';
+    a.download = 'gastos-'+period.fromYm+(period.toYm!==period.fromYm?'_'+period.toYm:'')+'-'+ui.chartType+'.png';
     document.body.appendChild(a); a.click(); a.remove();
     showToast('Imagen del gráfico guardada.');
   });
@@ -1216,7 +1272,7 @@ function renderChartContainer(){
     var w = window.open('', '_blank');
     if(!w){ showToast('El navegador bloqueó la ventana de impresión. Permita ventanas emergentes e intente de nuevo.'); return; }
     w.document.write(
-      '<html><head><title>Gráfico de gastos - '+ym+'</title></head>'+
+      '<html><head><title>Gráfico de gastos - '+period.label+'</title></head>'+
       '<body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;">'+
       '<img src="'+dataUrl+'" style="max-width:100%;" onload="window.print();">'+
       '</body></html>'
@@ -1237,8 +1293,11 @@ function monthLabelEs(ym){
 function getChartPngDataUrl(){
   var canvas = document.getElementById('expense-chart');
   if(!canvas) return null;
-  var ym = ui.chartMonth || currentYearMonth();
-  var titleText = 'Resumen de los Gastos del mes de '+monthLabelEs(ym);
+  var period = currentPeriodRange();
+  var titlePrefix = ui.chartPeriod === 'trimestral' ? 'Resumen de los Gastos del '
+    : ui.chartPeriod === 'anual' ? 'Resumen de los Gastos del '
+    : 'Resumen de los Gastos del mes de ';
+  var titleText = titlePrefix + period.label;
   var scale = window.devicePixelRatio || 1;
   var titleHeight = Math.round(56*scale);
 
@@ -1258,10 +1317,29 @@ function getChartPngDataUrl(){
 }
 
 function wireGraficosTab(){
-  document.getElementById('chart-month').addEventListener('change', function(){
+  document.querySelectorAll('[data-chart-period]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      ui.chartPeriod = btn.getAttribute('data-chart-period');
+      renderApp(); // reconstruye los selectores (mes/año/trimestre) según el período
+    });
+  });
+
+  var monthInput = document.getElementById('chart-month');
+  if(monthInput) monthInput.addEventListener('change', function(){
     ui.chartMonth = this.value;
     renderChartContainer();
   });
+  var yearSelect = document.getElementById('chart-year');
+  if(yearSelect) yearSelect.addEventListener('change', function(){
+    ui.chartYear = parseInt(this.value,10);
+    renderChartContainer();
+  });
+  var quarterSelect = document.getElementById('chart-quarter');
+  if(quarterSelect) quarterSelect.addEventListener('change', function(){
+    ui.chartQuarter = parseInt(this.value,10);
+    renderChartContainer();
+  });
+
   document.querySelectorAll('[data-chart-type]').forEach(function(btn){
     btn.addEventListener('click', function(){
       ui.chartType = btn.getAttribute('data-chart-type');
