@@ -167,14 +167,7 @@
   .acct-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:6px;}
   .acct-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
 
-  .calc-panel{max-width:300px;}
-  .calc-display{background:#1E231C;color:#fff;border-radius:10px;padding:20px 16px;text-align:right;font-size:30px;font-weight:600;margin-bottom:14px;overflow-x:auto;white-space:nowrap;}
-  .calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
-  .calc-btn{padding:16px 0;border-radius:10px;border:1px solid var(--line);background:#FCFBF8;font-size:17px;font-weight:600;}
-  .calc-btn:hover{background:#F1EFE6;}
-  .calc-btn.calc-op{background:var(--accent-soft);color:var(--accent);}
-  .calc-btn.calc-eq{background:var(--accent);color:#fff;border-color:var(--accent);grid-column:span 2;}
-  .calc-btn.calc-zero{grid-column:span 2;}
+
 
   .imp-ok{color:var(--income);font-weight:600;font-size:12.5px;}
   .imp-err{color:var(--expense);font-weight:600;font-size:12.5px;}
@@ -521,7 +514,7 @@ function renderApp(){
           navItem('respaldo','Respaldo')+
         '</nav>'+
         '<div style="flex:1;"></div>'+
-        '<button class="nav-btn" id="btn-open-calc">Calculadora</button>'+
+        '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
       '</aside>'+
       '<div class="main-col">'+
         '<div class="accounts-strip">'+renderAccountsStrip()+'</div>'+
@@ -542,7 +535,7 @@ function renderApp(){
   document.getElementById('fab-add').addEventListener('click', function(){
     openTxModal({type:'income'});
   });
-  document.getElementById('btn-open-calc').addEventListener('click', openCalculatorModal);
+  document.getElementById('btn-open-calc').addEventListener('click', openFinCalcModal);
   wireTabContentEvents();
 }
 
@@ -2353,125 +2346,154 @@ async function handleTxSave(type, editingId){
 }
 
 /* ---------------------------------------------------------
-   CALCULADORA
+   CALCULADORA FINANCIERA (Amortización / Interés simple y compuesto)
 --------------------------------------------------------- */
-var calcState = { display:'0', prevValue:null, operator:null, resetNext:false };
+var finCalcMode = 'amortizacion'; // 'amortizacion' | 'interes'
+var finCalcCurrency = 'CRC';
 
-function calcFormatResult(n){
-  if(isNaN(n) || !isFinite(n)) return 'Error';
-  var rounded = Math.round(n*1e8)/1e8;
-  return String(rounded);
-}
-function calcRenderDisplay(){
-  var d = document.getElementById('calc-display');
-  if(d) d.textContent = calcState.display;
-}
-function calcInputDigit(d){
-  if(calcState.display==='Error' || calcState.resetNext){ calcState.display = d; calcState.resetNext = false; }
-  else { calcState.display = (calcState.display==='0') ? d : calcState.display + d; }
-  calcRenderDisplay();
-}
-function calcInputDecimal(){
-  if(calcState.display==='Error' || calcState.resetNext){ calcState.display = '0.'; calcState.resetNext = false; calcRenderDisplay(); return; }
-  if(calcState.display.indexOf('.')===-1){ calcState.display += '.'; }
-  calcRenderDisplay();
-}
-function calcClear(){
-  calcState = { display:'0', prevValue:null, operator:null, resetNext:false };
-  calcRenderDisplay();
-}
-function calcBackspace(){
-  if(calcState.resetNext || calcState.display==='Error'){ return; }
-  calcState.display = calcState.display.length>1 ? calcState.display.slice(0,-1) : '0';
-  calcRenderDisplay();
-}
-function calcCompute(){
-  if(calcState.operator==null || calcState.prevValue==null) return;
-  var cur = parseFloat(calcState.display);
-  var result;
-  switch(calcState.operator){
-    case '+': result = calcState.prevValue + cur; break;
-    case '-': result = calcState.prevValue - cur; break;
-    case '×': result = calcState.prevValue * cur; break;
-    case '÷': result = cur===0 ? NaN : calcState.prevValue / cur; break;
-    default: result = cur;
+function calcAmortizacion(principal, tasaAnualPct, numCuotas){
+  var r = (tasaAnualPct/100)/12;
+  var n = Math.round(numCuotas);
+  var payment = (r === 0) ? (principal/n) : (principal * r / (1 - Math.pow(1+r, -n)));
+  var rows = [];
+  var saldo = principal;
+  var totalInteres = 0;
+  for(var i=1;i<=n;i++){
+    var interes = saldo * r;
+    var abono = payment - interes;
+    saldo = (i===n) ? 0 : (saldo - abono);
+    totalInteres += interes;
+    rows.push({n:i, pago:payment, interes:interes, abono:abono, saldo: saldo<0?0:saldo});
   }
-  calcState.display = calcFormatResult(result);
-  calcState.operator = null;
-  calcState.prevValue = null;
-  calcState.resetNext = true;
-  calcRenderDisplay();
-}
-function calcSetOperator(op){
-  if(calcState.operator && !calcState.resetNext){ calcCompute(); }
-  calcState.prevValue = parseFloat(calcState.display);
-  calcState.operator = op;
-  calcState.resetNext = true;
-  calcRenderDisplay();
-}
-function calcPercent(){
-  var cur = parseFloat(calcState.display);
-  var result = (calcState.operator && calcState.prevValue!=null) ? calcState.prevValue * (cur/100) : cur/100;
-  calcState.display = calcFormatResult(result);
-  calcState.resetNext = true;
-  calcRenderDisplay();
+  return { payment: payment, rows: rows, totalInteres: totalInteres, totalPagado: payment*n };
 }
 
-function buildCalcModalHtml(){
-  return '<div class="modal-panel calc-panel">'+
-    '<h3>Calculadora</h3>'+
-    '<div class="calc-display num" id="calc-display">'+esc(calcState.display)+'</div>'+
-    '<div class="calc-grid">'+
-      '<button type="button" class="calc-btn calc-op" data-calc="clear">C</button>'+
-      '<button type="button" class="calc-btn calc-op" data-calc="back">⌫</button>'+
-      '<button type="button" class="calc-btn calc-op" data-calc="percent">%</button>'+
-      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="÷">÷</button>'+
+function calcInteres(principal, tasaAnualPct, tiempoValor, tiempoUnidad, tipo, capPorAnio){
+  var years = tiempoUnidad==='dias' ? tiempoValor/365 : tiempoUnidad==='meses' ? tiempoValor/12 : tiempoValor;
+  var r = tasaAnualPct/100;
+  if(tipo === 'simple'){
+    var interesS = principal * r * years;
+    return { interes: interesS, montoFinal: principal + interesS, years: years };
+  }
+  var n = capPorAnio;
+  var montoFinal = principal * Math.pow(1 + r/n, n*years);
+  return { interes: montoFinal - principal, montoFinal: montoFinal, years: years };
+}
 
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="7">7</button>'+
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="8">8</button>'+
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="9">9</button>'+
-      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="×">×</button>'+
+function finCalcCurrencyOptionsHtml(){
+  return CURRENCIES.map(function(c){
+    return '<option value="'+c.code+'" '+(c.code===finCalcCurrency?'selected':'')+'>'+c.code+'</option>';
+  }).join('');
+}
 
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="4">4</button>'+
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="5">5</button>'+
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="6">6</button>'+
-      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="-">-</button>'+
+function buildFinCalcModalHtml(){
+  var segmented = '<div class="segmented">'+
+    '<button type="button" data-fincalc-mode="amortizacion" class="'+(finCalcMode==='amortizacion'?'active':'')+'">Amortización</button>'+
+    '<button type="button" data-fincalc-mode="interes" class="'+(finCalcMode==='interes'?'active':'')+'">Interés Simple/Compuesto</button>'+
+  '</div>';
 
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="1">1</button>'+
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="2">2</button>'+
-      '<button type="button" class="calc-btn" data-calc="digit" data-d="3">3</button>'+
-      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="+">+</button>'+
+  var fieldsHtml;
+  if(finCalcMode === 'amortizacion'){
+    fieldsHtml =
+      '<div class="field"><label>Monto del préstamo</label><div class="amount-row"><span class="currency-tag">'+finCalcCurrency+'</span><input type="number" step="0.01" min="0" id="fc-principal" placeholder="Ej. 5000000"></div></div>'+
+      '<div class="field"><label>Tasa de interés anual (%)</label><input type="number" step="0.01" min="0" id="fc-rate" placeholder="Ej. 14"></div>'+
+      '<div class="field"><label>Plazo (número de cuotas mensuales)</label><input type="number" step="1" min="1" id="fc-cuotas" placeholder="Ej. 48"></div>'+
+      '<div class="field"><label>Moneda</label><select id="fc-currency">'+finCalcCurrencyOptionsHtml()+'</select></div>'+
+      '<div class="row-actions"><button type="button" class="btn btn-primary" id="fc-calc-btn">Calcular</button></div>'+
+      '<div id="fc-result"></div>';
+  } else {
+    fieldsHtml =
+      '<div class="field"><label>Monto inicial (capital)</label><div class="amount-row"><span class="currency-tag">'+finCalcCurrency+'</span><input type="number" step="0.01" min="0" id="fc-principal" placeholder="Ej. 1000000"></div></div>'+
+      '<div class="field"><label>Tasa de interés anual (%)</label><input type="number" step="0.01" min="0" id="fc-rate" placeholder="Ej. 8"></div>'+
+      '<div class="field"><label>Tiempo</label><div class="amount-row"><input type="number" step="1" min="0" id="fc-tiempo-valor" placeholder="Ej. 18" style="flex:1;">'+
+        '<select id="fc-tiempo-unidad" style="flex:1;"><option value="dias">Días</option><option value="meses" selected>Meses</option><option value="anios">Años</option></select>'+
+      '</div></div>'+
+      '<div class="field"><label>Tipo de interés</label><div class="segmented" id="fc-tipo-segmented">'+
+        '<button type="button" data-fc-tipo="simple" class="active">Simple</button>'+
+        '<button type="button" data-fc-tipo="compuesto">Compuesto</button>'+
+      '</div></div>'+
+      '<div class="field" id="fc-capitalizacion-wrap" style="display:none;"><label>Capitalización</label><select id="fc-capitalizacion">'+
+        '<option value="1">Anual</option><option value="2">Semestral</option><option value="4">Trimestral</option><option value="12" selected>Mensual</option><option value="365">Diaria</option>'+
+      '</select></div>'+
+      '<div class="field"><label>Moneda</label><select id="fc-currency">'+finCalcCurrencyOptionsHtml()+'</select></div>'+
+      '<div class="row-actions"><button type="button" class="btn btn-primary" id="fc-calc-btn">Calcular</button></div>'+
+      '<div id="fc-result"></div>';
+  }
 
-      '<button type="button" class="calc-btn calc-zero" data-calc="digit" data-d="0">0</button>'+
-      '<button type="button" class="calc-btn" data-calc="decimal">.</button>'+
-      '<button type="button" class="calc-btn calc-eq" data-calc="equals">=</button>'+
-    '</div>'+
-    '<div class="modal-foot"><button type="button" class="btn" id="calc-close">Cerrar</button></div>'+
+  return '<div class="modal-panel" style="max-width:520px;">'+
+    '<h3>Calculadora Financiera</h3>'+
+    segmented+
+    fieldsHtml+
+    '<div class="modal-foot"><button type="button" class="btn" id="fc-close">Cerrar</button></div>'+
   '</div>';
 }
 
-function wireCalcModal(){
-  document.querySelectorAll('[data-calc]').forEach(function(btn){
+function wireFinCalcModal(){
+  document.querySelectorAll('[data-fincalc-mode]').forEach(function(btn){
     btn.addEventListener('click', function(){
-      var action = btn.getAttribute('data-calc');
-      if(action==='digit') calcInputDigit(btn.getAttribute('data-d'));
-      else if(action==='decimal') calcInputDecimal();
-      else if(action==='clear') calcClear();
-      else if(action==='back') calcBackspace();
-      else if(action==='percent') calcPercent();
-      else if(action==='op') calcSetOperator(btn.getAttribute('data-op'));
-      else if(action==='equals') calcCompute();
+      finCalcMode = btn.getAttribute('data-fincalc-mode');
+      openFinCalcModal();
     });
   });
-  document.getElementById('calc-close').addEventListener('click', closeModal);
+  document.getElementById('fc-close').addEventListener('click', closeModal);
+  var currencySel = document.getElementById('fc-currency');
+  if(currencySel) currencySel.addEventListener('change', function(){ finCalcCurrency = this.value; });
+
+  if(finCalcMode === 'interes'){
+    document.querySelectorAll('[data-fc-tipo]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        document.querySelectorAll('[data-fc-tipo]').forEach(function(b){ b.classList.remove('active'); });
+        btn.classList.add('active');
+        document.getElementById('fc-capitalizacion-wrap').style.display = (btn.getAttribute('data-fc-tipo')==='compuesto') ? 'block' : 'none';
+      });
+    });
+  }
+
+  document.getElementById('fc-calc-btn').addEventListener('click', function(){
+    var resultBox = document.getElementById('fc-result');
+    var principal = parseFloat(document.getElementById('fc-principal').value);
+    var rate = parseFloat(document.getElementById('fc-rate').value);
+    var cur = document.getElementById('fc-currency').value;
+
+    if(!principal || principal<=0 || isNaN(principal)){ resultBox.innerHTML = '<p style="color:var(--expense);font-size:14px;">Ingrese un monto válido.</p>'; return; }
+    if(!rate || rate<0 || isNaN(rate)){ resultBox.innerHTML = '<p style="color:var(--expense);font-size:14px;">Ingrese una tasa de interés válida.</p>'; return; }
+
+    if(finCalcMode === 'amortizacion'){
+      var cuotas = parseInt(document.getElementById('fc-cuotas').value, 10);
+      if(!cuotas || cuotas<=0){ resultBox.innerHTML = '<p style="color:var(--expense);font-size:14px;">Ingrese un plazo válido (número de cuotas).</p>'; return; }
+      var r = calcAmortizacion(principal, rate, cuotas);
+      var rowsHtml = r.rows.map(function(row){
+        return '<tr><td>'+row.n+'</td><td class="num">'+fmtCurrency(row.pago,cur)+'</td><td class="num">'+fmtCurrency(row.interes,cur)+'</td>'+
+          '<td class="num">'+fmtCurrency(row.abono,cur)+'</td><td class="num">'+fmtCurrency(row.saldo,cur)+'</td></tr>';
+      }).join('');
+      resultBox.innerHTML =
+        '<div class="summary-cards" style="margin-top:14px;">'+
+          '<div class="summary-card"><div class="s-label">Cuota mensual</div><div class="s-in num" style="font-size:17px;">'+fmtCurrency(r.payment,cur)+'</div></div>'+
+          '<div class="summary-card"><div class="s-label">Total a pagar</div><div class="s-in num" style="font-size:17px;">'+fmtCurrency(r.totalPagado,cur)+'</div></div>'+
+          '<div class="summary-card"><div class="s-label">Total de intereses</div><div class="s-out num" style="font-size:17px;">'+fmtCurrency(r.totalInteres,cur)+'</div></div>'+
+        '</div>'+
+        '<div class="imp-preview-wrap"><table><thead><tr><th>Cuota</th><th>Pago</th><th>Interés</th><th>Abono a capital</th><th>Saldo</th></tr></thead><tbody>'+rowsHtml+'</tbody></table></div>';
+    } else {
+      var tiempoValor = parseFloat(document.getElementById('fc-tiempo-valor').value);
+      if(!tiempoValor || tiempoValor<=0 || isNaN(tiempoValor)){ resultBox.innerHTML = '<p style="color:var(--expense);font-size:14px;">Ingrese un tiempo válido.</p>'; return; }
+      var tiempoUnidad = document.getElementById('fc-tiempo-unidad').value;
+      var tipo = document.querySelector('[data-fc-tipo].active').getAttribute('data-fc-tipo');
+      var capPorAnio = parseInt(document.getElementById('fc-capitalizacion').value, 10);
+      var res = calcInteres(principal, rate, tiempoValor, tiempoUnidad, tipo, capPorAnio);
+      resultBox.innerHTML =
+        '<div class="summary-cards" style="margin-top:14px;">'+
+          '<div class="summary-card"><div class="s-label">Interés generado</div><div class="s-in num" style="font-size:18px;">'+fmtCurrency(res.interes,cur)+'</div></div>'+
+          '<div class="summary-card"><div class="s-label">Monto final</div><div class="s-in num" style="font-size:18px;">'+fmtCurrency(res.montoFinal,cur)+'</div></div>'+
+        '</div>';
+    }
+  });
 }
 
-function openCalculatorModal(){
-  calcState = { display:'0', prevValue:null, operator:null, resetNext:false };
+function openFinCalcModal(){
   var root = document.getElementById('modal-root');
-  root.innerHTML = buildCalcModalHtml();
+  root.innerHTML = buildFinCalcModalHtml();
   root.classList.add('open');
-  wireCalcModal();
+  wireFinCalcModal();
 }
 
 /* ---------------------------------------------------------
