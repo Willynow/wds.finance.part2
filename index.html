@@ -169,6 +169,14 @@
 
 
 
+  .calc-panel{max-width:300px;}
+  .calc-display{background:#1E231C;color:#fff;border-radius:10px;padding:20px 16px;text-align:right;font-size:30px;font-weight:600;margin-bottom:14px;overflow-x:auto;white-space:nowrap;}
+  .calc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .calc-btn{padding:16px 0;border-radius:10px;border:1px solid var(--line);background:#FCFBF8;font-size:17px;font-weight:600;}
+  .calc-btn:hover{background:#F1EFE6;}
+  .calc-btn.calc-op{background:var(--accent-soft);color:var(--accent);}
+  .calc-btn.calc-eq{background:var(--accent);color:#fff;border-color:var(--accent);grid-column:span 2;}
+  .calc-btn.calc-zero{grid-column:span 2;}
   .imp-ok{color:var(--income);font-weight:600;font-size:12.5px;}
   .imp-err{color:var(--expense);font-weight:600;font-size:12.5px;}
   .imp-preview-wrap{max-height:360px;overflow:auto;margin-top:12px;border:1px solid var(--line);border-radius:8px;}
@@ -514,6 +522,7 @@ function renderApp(){
           navItem('respaldo','Respaldo')+
         '</nav>'+
         '<div style="flex:1;"></div>'+
+        '<button class="nav-btn" id="btn-open-calc-simple">Calculadora</button>'+
         '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
       '</aside>'+
       '<div class="main-col">'+
@@ -535,6 +544,7 @@ function renderApp(){
   document.getElementById('fab-add').addEventListener('click', function(){
     openTxModal({type:'income'});
   });
+  document.getElementById('btn-open-calc-simple').addEventListener('click', openCalculatorModal);
   document.getElementById('btn-open-calc').addEventListener('click', openFinCalcModal);
   wireTabContentEvents();
 }
@@ -2343,6 +2353,128 @@ async function handleTxSave(type, editingId){
   closeModal();
   renderApp();
   showToast(editingId ? 'Movimiento actualizado.' : 'Movimiento guardado.');
+}
+
+/* ---------------------------------------------------------
+   CALCULADORA SIMPLE
+--------------------------------------------------------- */
+var calcState = { display:'0', prevValue:null, operator:null, resetNext:false };
+
+function calcFormatResult(n){
+  if(isNaN(n) || !isFinite(n)) return 'Error';
+  var rounded = Math.round(n*1e8)/1e8;
+  return String(rounded);
+}
+function calcRenderDisplay(){
+  var d = document.getElementById('calc-display');
+  if(d) d.textContent = calcState.display;
+}
+function calcInputDigit(d){
+  if(calcState.display==='Error' || calcState.resetNext){ calcState.display = d; calcState.resetNext = false; }
+  else { calcState.display = (calcState.display==='0') ? d : calcState.display + d; }
+  calcRenderDisplay();
+}
+function calcInputDecimal(){
+  if(calcState.display==='Error' || calcState.resetNext){ calcState.display = '0.'; calcState.resetNext = false; calcRenderDisplay(); return; }
+  if(calcState.display.indexOf('.')===-1){ calcState.display += '.'; }
+  calcRenderDisplay();
+}
+function calcClear(){
+  calcState = { display:'0', prevValue:null, operator:null, resetNext:false };
+  calcRenderDisplay();
+}
+function calcBackspace(){
+  if(calcState.resetNext || calcState.display==='Error'){ return; }
+  calcState.display = calcState.display.length>1 ? calcState.display.slice(0,-1) : '0';
+  calcRenderDisplay();
+}
+function calcCompute(){
+  if(calcState.operator==null || calcState.prevValue==null) return;
+  var cur = parseFloat(calcState.display);
+  var result;
+  switch(calcState.operator){
+    case '+': result = calcState.prevValue + cur; break;
+    case '-': result = calcState.prevValue - cur; break;
+    case '×': result = calcState.prevValue * cur; break;
+    case '÷': result = cur===0 ? NaN : calcState.prevValue / cur; break;
+    default: result = cur;
+  }
+  calcState.display = calcFormatResult(result);
+  calcState.operator = null;
+  calcState.prevValue = null;
+  calcState.resetNext = true;
+  calcRenderDisplay();
+}
+function calcSetOperator(op){
+  if(calcState.operator && !calcState.resetNext){ calcCompute(); }
+  calcState.prevValue = parseFloat(calcState.display);
+  calcState.operator = op;
+  calcState.resetNext = true;
+  calcRenderDisplay();
+}
+function calcPercent(){
+  var cur = parseFloat(calcState.display);
+  var result = (calcState.operator && calcState.prevValue!=null) ? calcState.prevValue * (cur/100) : cur/100;
+  calcState.display = calcFormatResult(result);
+  calcState.resetNext = true;
+  calcRenderDisplay();
+}
+
+function buildCalcModalHtml(){
+  return '<div class="modal-panel calc-panel">'+
+    '<h3>Calculadora</h3>'+
+    '<div class="calc-display num" id="calc-display">'+esc(calcState.display)+'</div>'+
+    '<div class="calc-grid">'+
+      '<button type="button" class="calc-btn calc-op" data-calc="clear">C</button>'+
+      '<button type="button" class="calc-btn calc-op" data-calc="back">⌫</button>'+
+      '<button type="button" class="calc-btn calc-op" data-calc="percent">%</button>'+
+      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="÷">÷</button>'+
+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="7">7</button>'+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="8">8</button>'+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="9">9</button>'+
+      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="×">×</button>'+
+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="4">4</button>'+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="5">5</button>'+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="6">6</button>'+
+      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="-">-</button>'+
+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="1">1</button>'+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="2">2</button>'+
+      '<button type="button" class="calc-btn" data-calc="digit" data-d="3">3</button>'+
+      '<button type="button" class="calc-btn calc-op" data-calc="op" data-op="+">+</button>'+
+
+      '<button type="button" class="calc-btn calc-zero" data-calc="digit" data-d="0">0</button>'+
+      '<button type="button" class="calc-btn" data-calc="decimal">.</button>'+
+      '<button type="button" class="calc-btn calc-eq" data-calc="equals">=</button>'+
+    '</div>'+
+    '<div class="modal-foot"><button type="button" class="btn" id="calc-close">Cerrar</button></div>'+
+  '</div>';
+}
+
+function wireCalcModal(){
+  document.querySelectorAll('[data-calc]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var action = btn.getAttribute('data-calc');
+      if(action==='digit') calcInputDigit(btn.getAttribute('data-d'));
+      else if(action==='decimal') calcInputDecimal();
+      else if(action==='clear') calcClear();
+      else if(action==='back') calcBackspace();
+      else if(action==='percent') calcPercent();
+      else if(action==='op') calcSetOperator(btn.getAttribute('data-op'));
+      else if(action==='equals') calcCompute();
+    });
+  });
+  document.getElementById('calc-close').addEventListener('click', closeModal);
+}
+
+function openCalculatorModal(){
+  calcState = { display:'0', prevValue:null, operator:null, resetNext:false };
+  var root = document.getElementById('modal-root');
+  root.innerHTML = buildCalcModalHtml();
+  root.classList.add('open');
+  wireCalcModal();
 }
 
 /* ---------------------------------------------------------
