@@ -29,6 +29,9 @@
     --transfer-soft:#E7EDF4;
     --radius:10px;
     --sidebar-w:230px;
+    --navy:#0B1F3B;
+    --navy-hover:#132C56;
+    --navy-active:#1B3A6B;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -46,21 +49,21 @@
   .app-shell{display:flex;min-height:100vh;align-items:stretch;}
   .sidebar{
     width:var(--sidebar-w);flex-shrink:0;background:var(--surface);
-    border-right:1px solid var(--line);padding:22px 14px;
+    border-right:1px solid #000;padding:22px 14px;
     display:flex;flex-direction:column;gap:18px;position:sticky;top:0;height:100vh;
+    overflow-y:auto;
   }
   .brand{display:flex;align-items:center;gap:10px;padding:0 8px;}
   .brand-mark{width:38px;height:38px;border-radius:9px;object-fit:cover;flex-shrink:0;background:#fff;border:1px solid var(--line);}
   .brand-title{font-size:14.5px;font-weight:700;line-height:1.2;}
   .brand-sub{font-size:11.5px;color:var(--ink-muted);line-height:1.2;margin-top:2px;}
-  .nav{display:flex;flex-direction:column;gap:2px;}
+  .nav{display:flex;flex-direction:column;gap:6px;}
   .nav-btn{
-    display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:8px;
-    border:none;background:transparent;text-align:left;font-weight:500;color:var(--ink-muted);
-    border-left:3px solid transparent;
+    display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:6px;
+    border:1px solid #000;background:var(--navy);text-align:left;font-weight:700;color:#fff;
   }
-  .nav-btn:hover{background:#F1EFE6;}
-  .nav-btn.active{background:var(--accent-soft);color:var(--accent);border-left:3px solid var(--accent);font-weight:600;}
+  .nav-btn:hover{background:var(--navy-hover);}
+  .nav-btn.active{background:var(--navy-active);color:#fff;border-color:#000;font-weight:700;}
 
   .main-col{flex:1;min-width:0;padding:22px 26px 90px;max-width:1180px;}
   .accounts-strip{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;margin-bottom:22px;}
@@ -184,12 +187,8 @@
   .imp-preview-wrap thead th{position:sticky;top:0;background:var(--surface);}
 
   @media (max-width:780px){
-    .app-shell{flex-direction:column;}
-    .sidebar{width:100%;height:auto;position:sticky;top:0;flex-direction:row;align-items:center;overflow-x:auto;padding:12px 14px;border-right:none;border-bottom:1px solid var(--line);z-index:20;}
-    .brand{flex-shrink:0;}
-    .nav{flex-direction:row;}
-    .nav-btn{border-left:none;border-bottom:3px solid transparent;white-space:nowrap;}
-    .nav-btn.active{border-left:none;border-bottom:3px solid var(--accent);}
+    .sidebar{width:190px;padding:16px 10px;}
+    .nav-btn{padding:10px 8px;font-size:13.5px;}
     .main-col{padding:18px 14px 90px;}
   }
 </style>
@@ -514,17 +513,16 @@ function renderApp(){
           navItem('resumen','Resumen')+
           navItem('movimientos','Movimientos')+
           navItem('transferencias','Transferencias')+
-          navItem('graficos','Gráficos')+
           navItem('recurrentes','Recurrentes')+
           navItem('cuentas','Cuentas')+
           navItem('categorias','Categorías')+
           navItem('proveedores','Proveedores')+
           navItem('respaldo','Respaldo')+
+          navItem('graficos','Gráficos')+
+          '<button class="nav-btn" id="btn-open-calc-simple">Calculadora</button>'+
+          '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
+          '<a class="nav-btn" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a>'+
         '</nav>'+
-        '<div style="flex:1;"></div>'+
-        '<a class="nav-btn" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a>'+
-        '<button class="nav-btn" id="btn-open-calc-simple">Calculadora</button>'+
-        '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
       '</aside>'+
       '<div class="main-col">'+
         '<div class="accounts-strip">'+renderAccountsStrip()+'</div>'+
