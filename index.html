@@ -32,6 +32,7 @@
     --navy:#0B1F3B;
     --navy-hover:#132C56;
     --navy-active:#1B3A6B;
+    --nav-sep-color:#E8762C;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
@@ -64,6 +65,9 @@
   }
   .nav-btn:hover{background:var(--navy-hover);}
   .nav-btn.active{background:var(--navy-active);color:#fff;border-color:#000;font-weight:700;}
+  .nav-sep{display:flex;align-items:center;gap:8px;margin:10px 2px 2px;}
+  .nav-sep .nav-sep-line{flex:1;height:2px;background:var(--nav-sep-color);border-radius:2px;}
+  .nav-sep .nav-sep-label{font-size:11.5px;font-weight:700;color:var(--nav-sep-color);letter-spacing:.02em;white-space:nowrap;}
 
   .main-col{flex:1;min-width:0;padding:22px 26px 90px;max-width:1180px;}
   .accounts-strip{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;margin-bottom:22px;}
@@ -518,6 +522,7 @@ function renderApp(){
           navItem('categorias','Categorías')+
           navItem('proveedores','Proveedores')+
           navItem('respaldo','Respaldo')+
+          '<div class="nav-sep"><span class="nav-sep-line"></span><span class="nav-sep-label">Mis Herramientas</span><span class="nav-sep-line"></span></div>'+
           navItem('graficos','Gráficos')+
           '<button class="nav-btn" id="btn-open-calc-simple">Calculadora</button>'+
           '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
