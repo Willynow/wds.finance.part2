@@ -65,7 +65,9 @@
   }
   .nav-btn:hover{background:var(--navy-hover);}
   .nav-btn.active{background:var(--navy-active);color:#fff;border-color:#000;font-weight:700;}
-  .nav-sep{margin:10px 0 2px;padding:6px 12px 9px;border-radius:6px;border:1px solid #000;background:var(--nav-sep-color);text-align:center;}
+  .nav-sep{margin:10px 0 2px;padding:6px 12px 9px;border-radius:6px;border:1px solid #000;background:var(--nav-sep-color);text-align:center;width:100%;cursor:pointer;font:inherit;appearance:none;}
+  .nav-sep:hover{background:#D4671F;}
+  .nav-tools-group{display:flex;flex-direction:column;gap:6px;}
   .nav-sep .nav-sep-flourish{width:100%;max-width:170px;height:22px;display:block;margin:0 auto;}
   .nav-sep .nav-sep-label{font-size:12px;font-weight:700;color:#000;letter-spacing:.02em;white-space:nowrap;display:block;margin-top:1px;}
 
@@ -374,7 +376,8 @@ var ui = {
   chartMonth: null,
   chartYear: null,
   chartQuarter: null,
-  recurringMonth: null
+  recurringMonth: null,
+  toolsCollapsed: false
 };
 var modalState = {};
 var autoBackupEnabled = true;
@@ -522,18 +525,20 @@ function renderApp(){
           navItem('categorias','Categorías')+
           navItem('proveedores','Proveedores')+
           navItem('respaldo','Respaldo')+
-          '<div class="nav-sep">'+
+          '<button type="button" class="nav-sep" id="nav-tools-toggle" aria-expanded="'+(ui.toolsCollapsed?'false':'true')+'">'+
             '<svg class="nav-sep-flourish" viewBox="0 0 300 70" preserveAspectRatio="xMidYMid meet" aria-hidden="true">'+
               '<path d="M150,16 C144,6 126,8 126,22 C126,36 142,46 150,54 C158,46 174,36 174,22 C174,8 156,6 150,16 Z" fill="#000"/>'+
               '<path d="M8,42 C34,20 52,58 84,40 C100,31 112,33 124,37" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>'+
               '<path d="M292,42 C266,20 248,58 216,40 C200,31 188,33 176,37" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>'+
             '</svg>'+
-            '<span class="nav-sep-label">Mis Herramientas</span>'+
+            '<span class="nav-sep-label">Mis Herramientas '+(ui.toolsCollapsed?'▸':'▾')+'</span>'+
+          '</button>'+
+          '<div class="nav-tools-group" style="'+(ui.toolsCollapsed?'display:none;':'')+'">'+
+            navItem('graficos','Gráficos')+
+            '<button class="nav-btn" id="btn-open-calc-simple">Calculadora</button>'+
+            '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
+            '<a class="nav-btn" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a>'+
           '</div>'+
-          navItem('graficos','Gráficos')+
-          '<button class="nav-btn" id="btn-open-calc-simple">Calculadora</button>'+
-          '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
-          '<a class="nav-btn" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a>'+
         '</nav>'+
       '</aside>'+
       '<div class="main-col">'+
@@ -554,6 +559,10 @@ function renderApp(){
   });
   document.getElementById('fab-add').addEventListener('click', function(){
     openTxModal({type:'income'});
+  });
+  document.getElementById('nav-tools-toggle').addEventListener('click', function(){
+    ui.toolsCollapsed = !ui.toolsCollapsed;
+    renderApp();
   });
   document.getElementById('btn-open-calc-simple').addEventListener('click', openCalculatorModal);
   document.getElementById('btn-open-calc').addEventListener('click', openFinCalcModal);
