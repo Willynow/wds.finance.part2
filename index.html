@@ -69,6 +69,7 @@
   .nav-sep:hover{background:#D4671F;}
   .nav-tools-group{display:flex;flex-direction:column;gap:6px;perspective:700px;}
   .tool-flip{display:flex;}
+  .tool-flip>*{flex:1 1 auto;width:100%;}
   @keyframes flipShow{from{transform:rotateX(-90deg);opacity:0;}to{transform:rotateX(0deg);opacity:1;}}
   @keyframes flipHide{from{transform:rotateX(0deg);opacity:1;}to{transform:rotateX(-90deg);opacity:0;}}
   .nav-sep .nav-sep-flourish{width:100%;max-width:170px;height:22px;display:block;margin:0 auto;}
