@@ -68,7 +68,7 @@
   .nav-sep{margin:10px 0 2px;padding:6px 12px 9px;border-radius:6px;border:1px solid #000;background:var(--nav-sep-color);text-align:center;width:100%;cursor:pointer;font:inherit;appearance:none;}
   .nav-sep:hover{background:#D4671F;}
   .nav-tools-group{display:flex;flex-direction:column;gap:6px;perspective:700px;}
-  .tool-flip{transform-origin:top center;transform-style:preserve-3d;backface-visibility:hidden;}
+  .tool-flip{}
   @keyframes flipShow{from{transform:rotateX(-90deg);opacity:0;}to{transform:rotateX(0deg);opacity:1;}}
   @keyframes flipHide{from{transform:rotateX(0deg);opacity:1;}to{transform:rotateX(-90deg);opacity:0;}}
   .nav-sep .nav-sep-flourish{width:100%;max-width:170px;height:22px;display:block;margin:0 auto;}
@@ -522,6 +522,8 @@ function toggleToolsAnimated(){
     // Ocultar: de abajo hacia arriba, giro hacia arriba
     var seq = items.slice().reverse();
     seq.forEach(function(el, i){
+      el.style.transformStyle = 'preserve-3d';
+      el.style.backfaceVisibility = 'hidden';
       el.style.transformOrigin = 'bottom center';
       el.style.animation = 'none';
       void el.offsetWidth;
@@ -531,13 +533,23 @@ function toggleToolsAnimated(){
     ui.toolsCollapsed = true;
     if(btn) btn.setAttribute('aria-expanded','false');
     setTimeout(function(){
-      items.forEach(function(el){ el.style.display = 'none'; });
+      items.forEach(function(el){
+        el.style.display = 'none';
+        el.style.animation = '';
+        el.style.transform = '';
+        el.style.opacity = '';
+        el.style.transformOrigin = '';
+        el.style.transformStyle = '';
+        el.style.backfaceVisibility = '';
+      });
       if(arrow) arrow.textContent = '▸';
     }, seq.length*stepDelay + dur);
   }else{
     // Mostrar: de arriba hacia abajo, giro hacia abajo
     items.forEach(function(el){ el.style.display = ''; });
     items.forEach(function(el, i){
+      el.style.transformStyle = 'preserve-3d';
+      el.style.backfaceVisibility = 'hidden';
       el.style.transformOrigin = 'top center';
       el.style.animation = 'none';
       void el.offsetWidth;
@@ -547,6 +559,14 @@ function toggleToolsAnimated(){
     ui.toolsCollapsed = false;
     if(btn) btn.setAttribute('aria-expanded','true');
     setTimeout(function(){
+      items.forEach(function(el){
+        el.style.animation = '';
+        el.style.transform = '';
+        el.style.opacity = '';
+        el.style.transformOrigin = '';
+        el.style.transformStyle = '';
+        el.style.backfaceVisibility = '';
+      });
       if(arrow) arrow.textContent = '▾';
     }, items.length*stepDelay + dur);
   }
