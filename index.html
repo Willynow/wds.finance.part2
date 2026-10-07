@@ -67,7 +67,10 @@
   .nav-btn.active{background:var(--navy-active);color:#fff;border-color:#000;font-weight:700;}
   .nav-sep{margin:10px 0 2px;padding:6px 12px 9px;border-radius:6px;border:1px solid #000;background:var(--nav-sep-color);text-align:center;width:100%;cursor:pointer;font:inherit;appearance:none;}
   .nav-sep:hover{background:#D4671F;}
-  .nav-tools-group{display:flex;flex-direction:column;gap:6px;}
+  .nav-tools-group{display:flex;flex-direction:column;gap:6px;perspective:700px;}
+  .tool-flip{transform-origin:top center;transform-style:preserve-3d;backface-visibility:hidden;}
+  @keyframes flipShow{from{transform:rotateX(-90deg);opacity:0;}to{transform:rotateX(0deg);opacity:1;}}
+  @keyframes flipHide{from{transform:rotateX(0deg);opacity:1;}to{transform:rotateX(-90deg);opacity:0;}}
   .nav-sep .nav-sep-flourish{width:100%;max-width:170px;height:22px;display:block;margin:0 auto;}
   .nav-sep .nav-sep-label{font-size:12px;font-weight:700;color:#000;letter-spacing:.02em;white-space:nowrap;display:block;margin-top:1px;}
 
@@ -507,6 +510,48 @@ function navItem(key,label){
   return '<button class="nav-btn '+(ui.tab===key?'active':'')+'" data-nav="'+key+'">'+label+'</button>';
 }
 
+function toggleToolsAnimated(){
+  var group = document.getElementById('nav-tools-group');
+  if(!group) return;
+  var items = Array.prototype.slice.call(group.querySelectorAll('.tool-flip'));
+  var arrow = document.getElementById('nav-tools-arrow');
+  var btn = document.getElementById('nav-tools-toggle');
+  var stepDelay = 160;
+  var dur = 520;
+  if(!ui.toolsCollapsed){
+    // Ocultar: de abajo hacia arriba, giro hacia arriba
+    var seq = items.slice().reverse();
+    seq.forEach(function(el, i){
+      el.style.transformOrigin = 'bottom center';
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = 'flipHide '+(dur/1000)+'s ease forwards';
+      el.style.animationDelay = (i*stepDelay/1000)+'s';
+    });
+    ui.toolsCollapsed = true;
+    if(btn) btn.setAttribute('aria-expanded','false');
+    setTimeout(function(){
+      items.forEach(function(el){ el.style.display = 'none'; });
+      if(arrow) arrow.textContent = '▸';
+    }, seq.length*stepDelay + dur);
+  }else{
+    // Mostrar: de arriba hacia abajo, giro hacia abajo
+    items.forEach(function(el){ el.style.display = ''; });
+    items.forEach(function(el, i){
+      el.style.transformOrigin = 'top center';
+      el.style.animation = 'none';
+      void el.offsetWidth;
+      el.style.animation = 'flipShow '+(dur/1000)+'s ease forwards';
+      el.style.animationDelay = (i*stepDelay/1000)+'s';
+    });
+    ui.toolsCollapsed = false;
+    if(btn) btn.setAttribute('aria-expanded','true');
+    setTimeout(function(){
+      if(arrow) arrow.textContent = '▾';
+    }, items.length*stepDelay + dur);
+  }
+}
+
 function renderApp(){
   var app = document.getElementById('app');
   app.innerHTML =
@@ -531,13 +576,13 @@ function renderApp(){
               '<path d="M8,42 C34,20 52,58 84,40 C100,31 112,33 124,37" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>'+
               '<path d="M292,42 C266,20 248,58 216,40 C200,31 188,33 176,37" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>'+
             '</svg>'+
-            '<span class="nav-sep-label">Mis Herramientas '+(ui.toolsCollapsed?'▸':'▾')+'</span>'+
+            '<span class="nav-sep-label">Mis Herramientas <span id="nav-tools-arrow">'+(ui.toolsCollapsed?'▸':'▾')+'</span></span>'+
           '</button>'+
-          '<div class="nav-tools-group" style="'+(ui.toolsCollapsed?'display:none;':'')+'">'+
-            navItem('graficos','Gráficos')+
-            '<button class="nav-btn" id="btn-open-calc-simple">Calculadora</button>'+
-            '<button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button>'+
-            '<a class="nav-btn" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a>'+
+          '<div class="nav-tools-group" id="nav-tools-group">'+
+            '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'">'+navItem('graficos','Gráficos')+'</div>'+
+            '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'"><button class="nav-btn" id="btn-open-calc-simple">Calculadora</button></div>'+
+            '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'"><button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button></div>'+
+            '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'"><a class="nav-btn" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a></div>'+
           '</div>'+
         '</nav>'+
       '</aside>'+
@@ -561,8 +606,7 @@ function renderApp(){
     openTxModal({type:'income'});
   });
   document.getElementById('nav-tools-toggle').addEventListener('click', function(){
-    ui.toolsCollapsed = !ui.toolsCollapsed;
-    renderApp();
+    toggleToolsAnimated();
   });
   document.getElementById('btn-open-calc-simple').addEventListener('click', openCalculatorModal);
   document.getElementById('btn-open-calc').addEventListener('click', openFinCalcModal);
