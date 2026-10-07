@@ -730,7 +730,7 @@ function renderResumenTab(){
     '</div>'+
     monthCards+
     '<div class="card"><h3 style="margin-bottom:12px;">Movimientos recientes</h3>'+recentHtml+'</div>'+
-    '<img src="'+WDS_LOGO+'" alt="WDS" style="position:fixed;left:14px;bottom:14px;width:57px;height:57px;border-radius:50%;object-fit:cover;border:1px solid var(--line);z-index:10;">';
+    '<img src="'+WDS_LOGO+'" alt="WDS" style="position:fixed;left:14px;bottom:14px;width:100px;height:100px;border-radius:50%;object-fit:cover;border:1px solid var(--line);z-index:10;">';
 }
 function renderCompactRow(t){
   var acc = getAccount(t.accountId) || {name:'—',currency:'USD'};
@@ -981,7 +981,7 @@ function renderCuentasTab(){
       '<button class="btn btn-primary" id="btn-new-account">+ Agregar cuenta</button>'+
     '</div>'+cardsHtml+
     '<div style="margin-top:32px;display:flex;justify-content:flex-end;">'+
-      '<img src="'+WDS_LOGO+'" alt="WDS" style="width:57px;height:57px;border-radius:50%;object-fit:cover;border:1px solid var(--line);">'+
+      '<img src="'+WDS_LOGO+'" alt="WDS" style="width:100px;height:100px;border-radius:50%;object-fit:cover;border:1px solid var(--line);">'+
     '</div>';
 }
 function renderAccountCard(a){
