@@ -605,7 +605,7 @@ function renderApp(){
             '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'">'+navItem('graficos','Gráficos')+'</div>'+
             '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'"><button class="nav-btn" id="btn-open-calc-simple">Calculadora</button></div>'+
             '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'"><button class="nav-btn" id="btn-open-calc">Calculadora Financiera</button></div>'+
-            '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'"><a class="nav-btn" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a></div>'+
+            '<div class="tool-flip" style="'+(ui.toolsCollapsed?'display:none;':'')+'"><a class="nav-btn" id="link-bccr" href="https://sdd.bccr.fi.cr/es/IndicadoresEconomicos/Inicio/Contenedor/6?Cuadro=1" target="_blank" rel="noopener" style="text-decoration:none;display:block;">Valor de Cambio (BCCR)</a></div>'+
           '</div>'+
         '</nav>'+
       '</aside>'+
@@ -631,9 +631,26 @@ function renderApp(){
   document.getElementById('nav-tools-toggle').addEventListener('click', function(){
     toggleToolsAnimated();
   });
-  document.getElementById('btn-open-calc-simple').addEventListener('click', openCalculatorModal);
-  document.getElementById('btn-open-calc').addEventListener('click', openFinCalcModal);
+  document.getElementById('btn-open-calc-simple').addEventListener('click', function(){
+    closeGraficosIfOpen();
+    openCalculatorModal();
+  });
+  document.getElementById('btn-open-calc').addEventListener('click', function(){
+    closeGraficosIfOpen();
+    openFinCalcModal();
+  });
+  var bccrLink = document.getElementById('link-bccr');
+  if(bccrLink) bccrLink.addEventListener('click', function(){
+    closeGraficosIfOpen();
+  });
   wireTabContentEvents();
+}
+
+function closeGraficosIfOpen(){
+  if(ui.tab === 'graficos'){
+    ui.tab = 'resumen';
+    renderApp();
+  }
 }
 
 function renderAccountsStrip(){
@@ -1257,7 +1274,9 @@ function renderGraficosTab(){
     periodFields = '<div class="field"><label>Mes</label><input type="month" id="chart-month" value="'+esc(ui.chartMonth)+'"></div>';
   }
 
-  return '<div class="page-head"><h2>Gráficos de gastos</h2></div>'+
+  return '<div class="page-head"><h2>Gráficos de gastos</h2>'+
+      '<button class="btn btn-ghost btn-sm" id="btn-close-graficos">✕ Cerrar</button>'+
+    '</div>'+
     '<div class="card">'+
       '<p style="color:#000;font-size:15px;margin-top:0;">Gastos en colones (₡) por concepto, para el período elegido. Los conceptos que sumen menos de '+fmtCurrency(GRAFICOS_UMBRAL,'CRC')+' en ese período se agrupan en "Varios".</p>'+
       '<div class="segmented" style="max-width:420px;margin-bottom:14px;">'+
@@ -1411,6 +1430,11 @@ function getChartPngDataUrl(){
 }
 
 function wireGraficosTab(){
+  var closeBtn = document.getElementById('btn-close-graficos');
+  if(closeBtn) closeBtn.addEventListener('click', function(){
+    ui.tab = 'resumen';
+    renderApp();
+  });
   document.querySelectorAll('[data-chart-period]').forEach(function(btn){
     btn.addEventListener('click', function(){
       ui.chartPeriod = btn.getAttribute('data-chart-period');
