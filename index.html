@@ -2649,7 +2649,12 @@ function wireCalcModal(){
       calcSaveNotes();
     });
   }
-  document.getElementById('calc-close').addEventListener('click', closeModal);
+  document.getElementById('calc-close').addEventListener('click', function(){
+    clearTimeout(calcNotesSaveTimer);
+    calcNotesText = '';
+    calcSaveNotes();
+    closeModal();
+  });
 }
 
 async function openCalculatorModal(){
