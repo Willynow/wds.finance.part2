@@ -146,6 +146,8 @@
   .chip{display:flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--accent);border-radius:20px;padding:7px 8px 7px 14px;font-weight:600;font-size:13.5px;}
   .chip button{background:none;border:none;color:var(--accent);font-weight:700;width:20px;height:20px;border-radius:50%;line-height:1;}
   .chip button:hover{background:rgba(21,95,74,.15);}
+  .chip button.chip-name{width:auto;height:auto;border-radius:0;font-weight:600;font-size:inherit;padding:0;line-height:inherit;text-align:left;text-decoration:underline dotted;text-underline-offset:3px;}
+  .chip button.chip-name:hover{background:none;text-decoration:underline;}
   .add-row{display:flex;gap:8px;max-width:420px;}
   .add-row input{flex:1;}
 
@@ -1121,26 +1123,71 @@ function openAccountModal(existing){
 /* ---------------------------------------------------------
    CATEGORÍAS
 --------------------------------------------------------- */
-function renderChipList(list, deleteAction){
+function renderChipList(list, deleteAction, viewSrc){
   if(list.length===0) return '<div class="empty-state" style="padding:16px;">Sin elementos todavía.</div>';
   return '<div class="chip-list">'+list.map(function(name, idx){
-    return '<div class="chip">'+esc(name)+'<button data-action="'+deleteAction+'" data-idx="'+idx+'" title="Eliminar">×</button></div>';
+    var label = viewSrc
+      ? '<button type="button" class="chip-name" data-action="view-movs" data-src="'+viewSrc+'" data-name="'+esc(name)+'" title="Ver movimientos">'+esc(name)+'</button>'
+      : esc(name);
+    return '<div class="chip">'+label+'<button data-action="'+deleteAction+'" data-idx="'+idx+'" title="Eliminar">×</button></div>';
   }).join('')+'</div>';
+}
+
+/* Ventana con todos los movimientos de una categoría o proveedor, de más reciente a más antiguo */
+function openMovementsByModal(title, filterFn){
+  var list = state.transactions.filter(filterFn).sort(function(a,b){
+    var d = (b.date||'').localeCompare(a.date||'');
+    return d!==0 ? d : String(b.id||'').localeCompare(String(a.id||''));
+  });
+  var totals = {};
+  list.forEach(function(t){
+    var acc = getAccount(t.accountId) || {currency:'USD'};
+    var sign = t.kind==='income' ? 1 : (t.kind==='expense' ? -1 : 0);
+    totals[acc.currency] = (totals[acc.currency]||0) + sign*(Number(t.amount)||0);
+  });
+  var totalsHtml = Object.keys(totals).map(function(cur){
+    return '<span class="num" style="margin-right:14px;">'+cur+': '+fmtCurrency(totals[cur],cur)+'</span>';
+  }).join('');
+  var body = list.length===0
+    ? '<div class="empty-state">No hay movimientos registrados.</div>'
+    : '<div class="imp-preview-wrap" style="max-height:55vh;"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Cuenta</th><th>Descripción</th><th>Monto</th></tr></thead><tbody>'+
+        list.map(renderCompactRow).join('')+'</tbody></table></div>';
+  var root = document.getElementById('modal-root');
+  root.innerHTML = '<div class="modal-panel" style="max-width:760px;">'+
+    '<h3>'+esc(title)+'</h3>'+
+    '<div style="font-size:13px;color:var(--ink-muted);margin-bottom:10px;">'+list.length+' movimiento'+(list.length===1?'':'s')+' · más recientes primero'+(totalsHtml?'<div style="margin-top:4px;color:var(--ink);font-weight:600;">Neto: '+totalsHtml+'</div>':'')+'</div>'+
+    body+
+    '<div class="modal-foot"><button type="button" class="btn" id="movs-close">Cerrar</button></div>'+
+  '</div>';
+  root.classList.add('open');
+  document.getElementById('movs-close').addEventListener('click', closeModal);
+}
+function wireViewMovements(){
+  document.querySelectorAll('[data-action="view-movs"]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var src = btn.getAttribute('data-src');
+      var name = btn.getAttribute('data-name');
+      if(src==='cat-income') openMovementsByModal('Ingresos · '+name, function(t){ return t.kind==='income' && t.category===name; });
+      else if(src==='cat-expense') openMovementsByModal('Gastos · '+name, function(t){ return t.kind==='expense' && t.category===name; });
+      else openMovementsByModal('Proveedor/cliente · '+name, function(t){ return t.party===name; });
+    });
+  });
 }
 function renderCategoriasTab(){
   return '<div class="page-head"><h2>Categorías de ingresos y gastos</h2></div>'+
     '<div class="grid-2">'+
       '<div class="card"><h3 style="margin-bottom:10px;">Categorías de ingreso</h3>'+
-        renderChipList(state.catIncome,'del-cat-income')+
+        renderChipList(state.catIncome,'del-cat-income','cat-income')+
         '<div class="add-row"><input type="text" id="new-cat-income" placeholder="Nueva categoría de ingreso"><button class="btn btn-primary btn-sm" id="add-cat-income">Agregar</button></div>'+
       '</div>'+
       '<div class="card"><h3 style="margin-bottom:10px;">Categorías de gasto</h3>'+
-        renderChipList(state.catExpense,'del-cat-expense')+
+        renderChipList(state.catExpense,'del-cat-expense','cat-expense')+
         '<div class="add-row"><input type="text" id="new-cat-expense" placeholder="Nueva categoría de gasto"><button class="btn btn-primary btn-sm" id="add-cat-expense">Agregar</button></div>'+
       '</div>'+
     '</div>';
 }
 function wireCategoriasTab(){
+  wireViewMovements();
   document.querySelectorAll('[data-action="del-cat-income"]').forEach(function(btn){
     btn.addEventListener('click', async function(){
       state.catIncome.splice(parseInt(btn.getAttribute('data-idx'),10),1);
@@ -1176,11 +1223,12 @@ function renderProveedoresTab(){
   return '<div class="page-head"><h2>Proveedores y clientes</h2></div>'+
     '<div class="card">'+
       '<p style="color:var(--ink-muted);font-size:13.5px;margin-top:0;">Esta lista se usa para identificar tanto proveedores (en gastos) como clientes (en ingresos).</p>'+
-      renderChipList(state.suppliers,'del-supplier')+
+      renderChipList(state.suppliers,'del-supplier','supplier')+
       '<div class="add-row"><input type="text" id="new-supplier" placeholder="Nombre del proveedor o cliente"><button class="btn btn-primary btn-sm" id="add-supplier">Agregar</button></div>'+
     '</div>';
 }
 function wireProveedoresTab(){
+  wireViewMovements();
   document.querySelectorAll('[data-action="del-supplier"]').forEach(function(btn){
     btn.addEventListener('click', async function(){
       state.suppliers.splice(parseInt(btn.getAttribute('data-idx'),10),1);
