@@ -654,6 +654,9 @@ function renderApp(){
   if(bccrLink) bccrLink.addEventListener('click', function(){
     closeGraficosIfOpen();
   });
+  document.querySelectorAll('[data-acc-chip]').forEach(function(el){
+    el.addEventListener('click', function(){ openAccountMovementsModal(el.getAttribute('data-acc-chip'), 15); });
+  });
   wireTabContentEvents();
 }
 
@@ -670,12 +673,68 @@ function renderAccountsStrip(){
   }
   return state.accounts.map(function(a){
     var bal = accountBalance(a.id);
-    return '<div class="account-chip">'+
+    return '<div class="account-chip" data-acc-chip="'+a.id+'" style="cursor:pointer;" title="Ver movimientos recientes">'+
       '<div class="a-name">'+esc(a.name)+'</div>'+
       '<div class="a-bal '+(bal<0?'neg':'')+' num">'+fmtCurrency(bal,a.currency)+'</div>'+
       '<div class="a-cur">'+esc(a.currency)+'</div>'+
     '</div>';
   }).join('');
+}
+
+function localISO(d){
+  var m = d.getMonth()+1, day = d.getDate();
+  return d.getFullYear()+'-'+(m<10?'0':'')+m+'-'+(day<10?'0':'')+day;
+}
+function openAccountMovementsModal(accId, days){
+  var acc = getAccount(accId);
+  if(!acc) return;
+  var cutoffDate = new Date(); cutoffDate.setDate(cutoffDate.getDate()-days);
+  var cutoff = localISO(cutoffDate);
+  var rows = [];
+  state.transactions.forEach(function(t){
+    if(!t.date || t.date < cutoff) return;
+    if(t.kind==='transfer'){
+      if(t.accountId===accId){
+        var to = getAccount(t.toAccountId) || {name:'—'};
+        rows.push({t:t, label:'Transferencia', desc:'Hacia '+to.name, amt:-(Number(t.amount)||0)});
+      }
+      if(t.toAccountId===accId){
+        var from = getAccount(t.accountId) || {name:'—'};
+        rows.push({t:t, label:'Transferencia', desc:'Desde '+from.name, amt:(t.destAmount!=null? Number(t.destAmount) : Number(t.amount))||0});
+      }
+    } else if(t.accountId===accId){
+      var sign = t.kind==='income' ? 1 : -1;
+      var d = [t.category, t.party, t.description].filter(function(x){ return x && String(x).trim(); }).join(' · ');
+      rows.push({t:t, label:t.kind==='income'?'Ingreso':'Gasto', desc:d, amt:sign*(Number(t.amount)||0)});
+    }
+  });
+  rows.sort(function(a,b){
+    var d = (b.t.date||'').localeCompare(a.t.date||'');
+    return d!==0 ? d : String(b.t.id||'').localeCompare(String(a.t.id||''));
+  });
+  var net = rows.reduce(function(s,r){ return s+r.amt; }, 0);
+  var body = rows.length===0
+    ? '<div class="empty-state">No hay movimientos en los últimos '+days+' días.</div>'
+    : '<div class="imp-preview-wrap" style="max-height:55vh;"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Monto</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        var cls = r.label==='Gasto' ? 'badge-expense' : (r.label==='Ingreso' ? 'badge-income' : 'badge-transfer');
+        var amtCls = r.amt<0 ? 'amt-expense' : 'amt-income';
+        return '<tr><td>'+fmtDate(r.t.date)+'</td><td><span class="badge '+cls+'">'+r.label+'</span></td><td>'+esc(r.desc)+'</td>'+
+          '<td class="num '+amtCls+'">'+(r.amt<0?'- ':'+ ')+fmtCurrency(Math.abs(r.amt),acc.currency)+'</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  var root = document.getElementById('modal-root');
+  root.innerHTML = '<div class="modal-panel" id="acc-movs-panel" style="max-width:720px;cursor:pointer;">'+
+    '<h3>'+esc(acc.name)+' · últimos '+days+' días</h3>'+
+    '<div style="font-size:13px;color:var(--ink-muted);margin-bottom:10px;">'+rows.length+' movimiento'+(rows.length===1?'':'s')+' · más recientes primero · Neto: <span class="num" style="color:var(--ink);font-weight:600;">'+fmtCurrency(net,acc.currency)+'</span><br>'+
+      'Toque esta ventana para ver '+(days===15?'los últimos 30 días':'los últimos 15 días')+'.</div>'+
+    body+
+    '<div class="modal-foot"><button type="button" class="btn" id="acc-movs-close">Cerrar</button></div>'+
+  '</div>';
+  root.classList.add('open');
+  document.getElementById('acc-movs-close').addEventListener('click', function(e){ e.stopPropagation(); closeModal(); });
+  document.getElementById('acc-movs-panel').addEventListener('click', function(){
+    openAccountMovementsModal(accId, days===15 ? 30 : 15);
+  });
 }
 
 function renderTabContent(){
