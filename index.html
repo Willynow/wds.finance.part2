@@ -911,9 +911,38 @@ function renderTxTable(){
   if(rows.length===0){
     return countLine+'<div class="empty-state">No hay movimientos que coincidan con los filtros.</div>';
   }
-  return countLine+'<table class="big-rows"><thead><tr>'+
+  return countLine+renderTxTotals(rows)+'<table class="big-rows"><thead><tr>'+
     '<th>Fecha</th><th>Tipo</th><th>Cuenta</th><th>Categoría</th><th>Proveedor/Cliente</th><th>Descripción</th><th>Monto</th><th></th>'+
   '</tr></thead><tbody>'+rows.map(renderTxRow).join('')+'</tbody></table>';
+}
+
+function renderTxTotals(rows){
+  var byCur = {}, order = [];
+  rows.forEach(function(t){
+    var acc = getAccount(t.accountId);
+    var cur = acc ? acc.currency : 'USD';
+    if(!byCur[cur]){ byCur[cur] = {inc:0, exp:0}; order.push(cur); }
+    var amt = Number(t.amount)||0;
+    if(t.kind==='income') byCur[cur].inc += amt; else byCur[cur].exp += amt;
+  });
+  var f = ui.filters, accName = '';
+  if(f.account!=='all'){ var a = getAccount(f.account); accName = a ? a.name : ''; }
+  var period = (f.from||f.to)
+    ? ('del '+(f.from?fmtDate(f.from):'inicio')+' al '+(f.to?fmtDate(f.to):'hoy'))
+    : 'de todo el periodo';
+  var title = 'Total '+period+(accName?' · '+esc(accName):' · todas las cuentas');
+  var cells = order.map(function(cur){
+    var v = byCur[cur], net = v.inc - v.exp;
+    return '<div style="flex:1;min-width:230px;background:var(--surface-2,#f4f5f7);border:1px solid var(--line);border-radius:10px;padding:10px 14px;">'+
+      '<div style="font-size:12.5px;color:var(--ink-muted);margin-bottom:4px;">'+cur+'</div>'+
+      '<div style="font-size:13.5px;display:flex;justify-content:space-between;gap:10px;"><span>Ingresos</span><span class="num amt-income">'+fmtCurrency(v.inc,cur)+'</span></div>'+
+      '<div style="font-size:13.5px;display:flex;justify-content:space-between;gap:10px;"><span>Gastos</span><span class="num amt-expense">'+fmtCurrency(v.exp,cur)+'</span></div>'+
+      '<div style="font-size:15px;font-weight:700;display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);margin-top:6px;padding-top:6px;"><span>Neto</span><span class="num '+(net>=0?'amt-income':'amt-expense')+'">'+(net<0?'- ':'')+fmtCurrency(Math.abs(net),cur)+'</span></div>'+
+    '</div>';
+  }).join('');
+  return '<div id="tx-totals" style="margin-bottom:14px;">'+
+    '<div style="font-size:13.5px;font-weight:600;margin-bottom:8px;">'+title+'</div>'+
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;">'+cells+'</div></div>';
 }
 
 function renderTxRow(t){
