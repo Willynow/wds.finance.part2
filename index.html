@@ -753,6 +753,38 @@ function openAccountMovementsModal(accId, days){
   });
 }
 
+function openAccountYearSummaryModal(accId){
+  var acc = getAccount(accId);
+  if(!acc) return;
+  var year = new Date().getFullYear();
+  var names = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  var inc = [0,0,0,0,0,0,0,0,0,0,0,0], exp = [0,0,0,0,0,0,0,0,0,0,0,0];
+  state.transactions.forEach(function(t){
+    if(t.accountId!==accId || !t.date) return;
+    if(t.kind!=='income' && t.kind!=='expense') return;
+    if(String(t.date).slice(0,4)!==String(year)) return;
+    var m = parseInt(String(t.date).slice(5,7),10)-1;
+    if(!(m>=0 && m<12)) return;
+    var amt = Number(t.amount)||0;
+    if(t.kind==='income') inc[m]+=amt; else exp[m]+=amt;
+  });
+  var totI = inc.reduce(function(a,b){return a+b;},0), totE = exp.reduce(function(a,b){return a+b;},0);
+  var rows = names.map(function(n,i){
+    return '<tr><td>'+n+'</td><td class="num amt-income">'+fmtCurrency(inc[i],acc.currency)+'</td><td class="num amt-expense">'+fmtCurrency(exp[i],acc.currency)+'</td></tr>';
+  }).join('');
+  var root = document.getElementById('modal-root');
+  root.innerHTML = '<div class="modal-panel" style="max-width:640px;">'+
+    '<h3>'+esc(acc.name)+' · '+year+'</h3>'+
+    '<div style="font-size:13px;color:var(--ink-muted);margin-bottom:10px;">Ingresos y egresos por mes, en '+esc(acc.currency)+'. No incluye transferencias.</div>'+
+    '<div class="imp-preview-wrap" style="max-height:60vh;"><table><thead><tr><th>Mes</th><th>Ingresos</th><th>Egresos</th></tr></thead><tbody>'+rows+
+    '<tr style="font-weight:700;"><td>Total '+year+'</td><td class="num amt-income">'+fmtCurrency(totI,acc.currency)+'</td><td class="num amt-expense">'+fmtCurrency(totE,acc.currency)+'</td></tr>'+
+    '</tbody></table></div>'+
+    '<div class="modal-foot"><button type="button" class="btn" id="acc-year-close">Cerrar</button></div>'+
+  '</div>';
+  root.classList.add('open');
+  document.getElementById('acc-year-close').addEventListener('click', closeModal);
+}
+
 function renderTabContent(){
   switch(ui.tab){
     case 'movimientos': return renderMovimientosTab();
@@ -1136,12 +1168,17 @@ function renderAccountCard(a){
       '<button class="btn btn-primary btn-sm" data-action="quick-income" data-id="'+a.id+'">Ingreso</button>'+
     '</div>';
   }
-  return '<div class="acct-card">'+
+  var nmKey = String(a.name||'').trim().toLowerCase();
+  var hasYearSummary = (nmKey==='davivienda 1' || nmKey==='davivienda 2');
+  var cornerBtn = hasYearSummary
+    ? '<button type="button" data-action="acc-year-summary" data-id="'+a.id+'" title="Ingresos y egresos por mes del año" aria-label="Ver ingresos y egresos por mes" style="position:absolute;right:0;bottom:0;width:44px;height:44px;border:none;padding:0;cursor:pointer;border-bottom-right-radius:inherit;background:linear-gradient(135deg, transparent 50%, #E8762C 50%);"></button>'
+    : '';
+  return '<div class="acct-card" style="position:relative;">'+cornerBtn+
     '<button type="button" class="btn-link" style="font-weight:700;font-size:15px;text-align:left;padding:0;text-decoration:none;color:var(--ink);" data-action="toggle-quick" data-id="'+a.id+'">'+esc(a.name)+'</button>'+
     '<div style="font-size:12px;color:var(--ink-muted);">'+esc(a.currency)+' · Saldo inicial '+fmtCurrency(a.initialBalance,a.currency)+'</div>'+
     '<div class="num" style="font-size:20px;font-weight:700;margin-top:4px;'+(bal<0?'color:var(--expense);':'')+'">'+fmtCurrency(bal,a.currency)+'</div>'+
     quickActions+
-    '<div class="row-actions" style="margin-top:8px;">'+
+    '<div class="row-actions" style="margin-top:8px;'+(hasYearSummary?'padding-right:44px;':'')+'">'+
       '<button class="btn btn-ghost btn-sm" data-action="edit-acc" data-id="'+a.id+'">Editar</button>'+delBtn+
     '</div>'+
   '</div>';
@@ -1153,6 +1190,12 @@ function wireCuentasTab(){
       var id = btn.getAttribute('data-id');
       ui.quickActionAccountId = (ui.quickActionAccountId === id) ? null : id;
       renderApp();
+    });
+  });
+  document.querySelectorAll('[data-action="acc-year-summary"]').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      openAccountYearSummaryModal(btn.getAttribute('data-id'));
     });
   });
   document.querySelectorAll('[data-action="quick-expense"]').forEach(function(btn){
