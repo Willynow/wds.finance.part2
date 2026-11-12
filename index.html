@@ -607,6 +607,7 @@ function renderApp(){
           navItem('movimientos','Movimientos')+
           navItem('transferencias','Transferencias')+
           navItem('recurrentes','Recurrentes')+
+          '<button class="nav-btn" id="btn-open-auto">Regist. Automaticos</button>'+
           navItem('cuentas','Cuentas')+
           navItem('categorias','Categorías')+
           navItem('proveedores','Proveedores')+
@@ -646,6 +647,8 @@ function renderApp(){
   document.getElementById('fab-add').addEventListener('click', function(){
     openTxModal({type:'income'});
   });
+  var autoBtn = document.getElementById('btn-open-auto');
+  if(autoBtn) autoBtn.addEventListener('click', function(){ closeGraficosIfOpen(); openAutoRegsModal(); });
   document.getElementById('nav-tools-toggle').addEventListener('click', function(){
     toggleToolsAnimated();
   });
@@ -783,6 +786,63 @@ function openAccountYearSummaryModal(accId){
   '</div>';
   root.classList.add('open');
   document.getElementById('acc-year-close').addEventListener('click', closeModal);
+}
+
+var AUTO_REGS = [
+  {code:'1.01.01', acc:'Daviv 1', cat:'Alimentos y Bebidas', party:'Maxi Pali'},
+  {code:'1.01.02', acc:'Daviv 1', cat:'Alimentos y Bebidas', party:'Más x Menos'},
+  {code:'1.01.03', acc:'Daviv 1', cat:'Alimentos y Bebidas', party:'AutoMercado'},
+  {code:'1.01.04', acc:'Daviv 1', cat:'Alimentos y Bebidas', party:'Vindi'},
+  {code:'1.02.05', acc:'Daviv 1', cat:'Gasolina y Peajes', party:'Est. Servicio. San Rafael'},
+  {code:'1.03.06', acc:'Daviv 1', cat:'Farmacia y Serv.Medicos', party:'FarmValue'},
+  {code:'2.04.07', acc:'Daviv 2', cat:'Software y Apps', party:'Google Play'},
+  {code:'5.01.01', acc:'Efectivo', cat:'Alimentos y Bebidas', party:'Maxi Pali'},
+  {code:'5.01.04', acc:'Efectivo', cat:'Alimentos y Bebidas', party:'Vindi'}
+];
+
+function autoRegAccountId(label){
+  var l = String(label||'').trim().toLowerCase();
+  var m = l.match(/^daviv\w*\s*(\d+)$/);
+  var found = null;
+  state.accounts.forEach(function(a){
+    if(found) return;
+    var n = String(a.name||'').trim().toLowerCase();
+    if(m){ if(n.indexOf('daviv')===0 && n.replace(/\D+/g,'')===m[1]) found = a.id; }
+    else if(n===l || n.indexOf(l)!==-1) found = a.id;
+  });
+  return found;
+}
+
+function openAutoRegsModal(){
+  var rows = AUTO_REGS.map(function(r,i){
+    return '<tr data-auto-idx="'+i+'" style="cursor:pointer;"><td class="num"><strong>'+esc(r.code)+'</strong></td><td>'+esc(r.acc)+'</td><td>'+esc(r.cat)+'</td><td>'+esc(r.party)+'</td></tr>';
+  }).join('');
+  var root = document.getElementById('modal-root');
+  root.innerHTML = '<div class="modal-panel" style="max-width:760px;">'+
+    '<h3>Registros automáticos</h3>'+
+    '<div style="font-size:13px;color:var(--ink-muted);margin-bottom:10px;">Toque una fila para crear el gasto con esos datos; solo falta completar fecha, monto y descripción.</div>'+
+    '<div class="imp-preview-wrap" style="max-height:60vh;"><table><thead><tr><th>Código</th><th>Cuenta</th><th>Concepto</th><th>Proveedor</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div class="modal-foot"><button type="button" class="btn" id="auto-close">Cerrar</button></div>'+
+  '</div>';
+  root.classList.add('open');
+  document.getElementById('auto-close').addEventListener('click', closeModal);
+  root.querySelectorAll('tr[data-auto-idx]').forEach(function(tr){
+    tr.addEventListener('click', function(){
+      var r = AUTO_REGS[parseInt(tr.getAttribute('data-auto-idx'),10)];
+      applyAutoReg(r);
+    });
+  });
+}
+
+async function applyAutoReg(r){
+  var accId = autoRegAccountId(r.acc);
+  var changed = [];
+  if(state.catExpense.indexOf(r.cat)===-1){ state.catExpense.push(r.cat); changed.push('catExpense'); }
+  if(state.suppliers.indexOf(r.party)===-1){ state.suppliers.push(r.party); changed.push('suppliers'); }
+  for(var i=0;i<changed.length;i++){ await persist(changed[i]); }
+  closeModal();
+  openTxModal({type:'expense', presetAccountId: accId, preset:{category:r.cat, party:r.party}});
+  if(!accId) showToast('No se encontró la cuenta "'+r.acc+'"; elija la cuenta manualmente.');
 }
 
 function renderTabContent(){
@@ -2372,7 +2432,7 @@ function openTxModal(opts){
   opts = opts || {};
   var type = opts.type || 'income';
   var editing = opts.editing || null;
-  modalState = { pendingImage: null, preserved:{}, presetAccountId: opts.presetAccountId || null };
+  modalState = { pendingImage: null, preserved:{}, presetAccountId: opts.presetAccountId || null, preset: opts.preset || null };
 
   // preservar valores comunes al cambiar de tipo dentro del modal (sin volver a abrir editando)
   if(!editing){
@@ -2425,11 +2485,11 @@ function buildTxModalHtml(type, editing){
     var selAcc = getAccount(selAccount);
     fieldsHtml =
       '<div class="field"><label>Cuenta bancaria</label><select id="f-account">'+accountOptionsHtml(selAccount)+'</select><div class="field-error">Seleccione una cuenta.</div></div>'+
-      '<div class="field"><label>Categoría</label><select id="f-category">'+listOptionsHtml(catList, editing? editing.category : '')+'</select>'+
+      '<div class="field"><label>Categoría</label><select id="f-category">'+listOptionsHtml(catList, editing? editing.category : ((modalState.preset && modalState.preset.category) || ''))+'</select>'+
         '<div class="field-error">Seleccione o agregue una categoría.</div>'+
         '<div class="inline-add" id="f-newcat-box"><input type="text" id="f-newcat-input" placeholder="Nombre de la categoría"><button type="button" class="btn btn-sm" id="f-newcat-add-btn">Agregar</button></div>'+
       '</div>'+
-      '<div class="field"><label>'+partyLabel+'</label><select id="f-party"><option value="">— Ninguno —</option>'+listOptionsHtml(state.suppliers, editing? editing.party : '')+'</select>'+
+      '<div class="field"><label>'+partyLabel+'</label><select id="f-party"><option value="">— Ninguno —</option>'+listOptionsHtml(state.suppliers, editing? editing.party : ((modalState.preset && modalState.preset.party) || ''))+'</select>'+
         '<div class="inline-add" id="f-newparty-box"><input type="text" id="f-newparty-input" placeholder="Nombre"><button type="button" class="btn btn-sm" id="f-newparty-add-btn">Agregar</button></div>'+
       '</div>'+
       '<div class="field"><label>Monto</label><div class="amount-row"><span class="currency-tag" id="f-currency-label">'+(selAcc?selAcc.currency:'')+'</span><input type="number" step="0.01" min="0" id="f-amount" value="'+esc(amountVal)+'"></div><div class="field-error">Ingrese un monto válido.</div></div>'+
