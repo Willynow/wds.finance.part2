@@ -480,6 +480,10 @@ async function saveImage(txId, dataUrl){
 async function getImage(txId){
   try{ var res = await storage.get('img_'+txId, false); return res? res.value : null; }catch(e){ return null; }
 }
+async function deleteTxImages(txId){
+  await deleteImageKey(txId);
+  await deleteImageKey(txId+'#2');
+}
 async function deleteImageKey(txId){
   try{ await storage.delete('img_'+txId, false); }catch(e){ /* puede no existir */ }
 }
@@ -1048,7 +1052,8 @@ function renderTxRow(t){
     actions = '<button class="btn btn-danger btn-sm" data-action="confirm-delete-tx" data-id="'+t.id+'">Confirmar</button>'+
               '<button class="btn btn-sm" data-action="cancel-delete-tx">Cancelar</button>';
   } else {
-    actions = (t.hasImage? '<button class="btn btn-ghost btn-sm" data-action="view-image" data-id="'+t.id+'">Imagen</button>' : '')+
+    actions = (t.hasImage? '<button class="btn btn-ghost btn-sm" data-action="view-image" data-id="'+t.id+'">Imagen'+(t.hasImage2?' 1':'')+'</button>' : '')+
+      (t.hasImage2? '<button class="btn btn-ghost btn-sm" data-action="view-image" data-id="'+t.id+'#2">Imagen 2</button>' : '')+
       '<button class="btn btn-ghost btn-sm" data-action="edit-tx" data-id="'+t.id+'">Editar</button>'+
       '<button class="btn btn-ghost btn-sm" data-action="delete-tx" data-id="'+t.id+'">Eliminar</button>';
   }
@@ -1095,7 +1100,7 @@ function wireTxTableRowEvents(){
       var id = btn.getAttribute('data-id');
       state.transactions = state.transactions.filter(function(t){ return t.id!==id; });
       await persist('transactions');
-      await deleteImageKey(id);
+      await deleteTxImages(id);
       ui.pendingDeleteKey = null;
       renderApp();
       showToast('Movimiento eliminado.');
@@ -1144,7 +1149,8 @@ function renderTransferRow(t){
     actions = '<button class="btn btn-danger btn-sm" data-action="confirm-delete-tr" data-id="'+t.id+'">Confirmar</button>'+
               '<button class="btn btn-sm" data-action="cancel-delete-tr">Cancelar</button>';
   } else {
-    actions = (t.hasImage? '<button class="btn btn-ghost btn-sm" data-action="view-image" data-id="'+t.id+'">Imagen</button>' : '')+
+    actions = (t.hasImage? '<button class="btn btn-ghost btn-sm" data-action="view-image" data-id="'+t.id+'">Imagen'+(t.hasImage2?' 1':'')+'</button>' : '')+
+      (t.hasImage2? '<button class="btn btn-ghost btn-sm" data-action="view-image" data-id="'+t.id+'#2">Imagen 2</button>' : '')+
       '<button class="btn btn-ghost btn-sm" data-action="edit-tr" data-id="'+t.id+'">Editar</button>'+
       '<button class="btn btn-ghost btn-sm" data-action="delete-tr" data-id="'+t.id+'">Eliminar</button>';
   }
@@ -1183,7 +1189,7 @@ function wireTransferTableRowEvents(){
       var id = btn.getAttribute('data-id');
       state.transactions = state.transactions.filter(function(t){ return t.id!==id; });
       await persist('transactions');
-      await deleteImageKey(id);
+      await deleteTxImages(id);
       ui.pendingDeleteKey = null;
       renderApp();
       showToast('Transferencia eliminada.');
@@ -1892,7 +1898,7 @@ function openRecurringModal(existing){
    RESPALDO (exportar / importar todos los datos)
 --------------------------------------------------------- */
 function renderRespaldoTab(){
-  var totalImgs = state.transactions.filter(function(t){ return t.hasImage; }).length;
+  var totalImgs = state.transactions.reduce(function(n,t){ return n + (t.hasImage?1:0) + (t.hasImage2?1:0); }, 0);
   return '<div class="page-head"><h2>Copia de seguridad</h2></div>'+
     '<div class="card">'+
       '<p style="color:#000;font-size:16.5px;margin-top:0;">'+
@@ -1957,9 +1963,13 @@ function renderRespaldoTab(){
 }
 
 async function collectFullBackup(){
-  var withImg = state.transactions.filter(function(t){ return t.hasImage; });
-  var results = await Promise.all(withImg.map(function(t){
-    return getImage(t.id).then(function(dataUrl){ return {id:t.id, dataUrl:dataUrl}; });
+  var imgKeys = [];
+  state.transactions.forEach(function(t){
+    if(t.hasImage) imgKeys.push(t.id);
+    if(t.hasImage2) imgKeys.push(t.id+'#2');
+  });
+  var results = await Promise.all(imgKeys.map(function(k){
+    return getImage(k).then(function(dataUrl){ return {id:k, dataUrl:dataUrl}; });
   }));
   var images = {};
   results.forEach(function(r){ if(r.dataUrl) images[r.id] = r.dataUrl; });
@@ -2081,7 +2091,7 @@ function refreshDeleteFilterUI(){
       var keepSet = {};
       state.transactions.forEach(function(t){ if(!matchesDeleteFilter(t, f2)) keepSet[t.id]=true; });
       var deletedCount = toDelete.length;
-      for(var i=0;i<toDelete.length;i++){ if(toDelete[i].hasImage){ await deleteImageKey(toDelete[i].id); } }
+      for(var i=0;i<toDelete.length;i++){ if(toDelete[i].hasImage || toDelete[i].hasImage2){ await deleteTxImages(toDelete[i].id); } }
       state.transactions = state.transactions.filter(function(t){ return keepSet[t.id]; });
       await persist('transactions');
       delFilteredPendingConfirm = false;
@@ -2112,8 +2122,8 @@ function wireDeleteDataSection(){
   });
   wipeBtn.addEventListener('click', async function(){
     wipeBtn.disabled = true; wipeBtn.textContent = 'Borrando…';
-    var imgIds = state.transactions.filter(function(t){ return t.hasImage; }).map(function(t){ return t.id; });
-    for(var i=0;i<imgIds.length;i++){ await deleteImageKey(imgIds[i]); }
+    var imgIds = state.transactions.filter(function(t){ return t.hasImage || t.hasImage2; }).map(function(t){ return t.id; });
+    for(var i=0;i<imgIds.length;i++){ await deleteTxImages(imgIds[i]); }
     var defaults = defaultData();
     state.accounts = defaults.accounts;
     state.catIncome = defaults.catIncome;
@@ -2432,7 +2442,7 @@ function openTxModal(opts){
   opts = opts || {};
   var type = opts.type || 'income';
   var editing = opts.editing || null;
-  modalState = { pendingImage: null, preserved:{}, presetAccountId: opts.presetAccountId || null, preset: opts.preset || null };
+  modalState = { pendingImage: null, pendingImage2: null, preserved:{}, presetAccountId: opts.presetAccountId || null, preset: opts.preset || null };
 
   // preservar valores comunes al cambiar de tipo dentro del modal (sin volver a abrir editando)
   if(!editing){
@@ -2449,20 +2459,21 @@ function openTxModal(opts){
   root.classList.add('open');
   wireTxModal(type, editing);
 
-  if(editing && editing.hasImage){
-    getImage(editing.id).then(function(dataUrl){
+  [['',editing && editing.hasImage,editing && editing.id,'pendingImage'],['2',editing && editing.hasImage2,editing && (editing.id+'#2'),'pendingImage2']].forEach(function(sl){
+    if(!sl[1]) return;
+    getImage(sl[2]).then(function(dataUrl){
       if(dataUrl){
-        modalState.pendingImage = null; // sin cambios, ya existe
-        var prev = document.getElementById('f-image-preview');
-        if(prev) prev.innerHTML = '<div class="img-preview"><img src="'+dataUrl+'"><button type="button" class="btn-link" id="f-image-remove">Quitar imagen</button></div>';
-        var rm = document.getElementById('f-image-remove');
+        modalState[sl[3]] = null; // sin cambios, ya existe
+        var prev = document.getElementById('f-image'+sl[0]+'-preview');
+        if(prev) prev.innerHTML = '<div class="img-preview"><img src="'+dataUrl+'"><button type="button" class="btn-link" id="f-image'+sl[0]+'-remove">Quitar imagen</button></div>';
+        var rm = document.getElementById('f-image'+sl[0]+'-remove');
         if(rm) rm.addEventListener('click', function(){
-          modalState.pendingImage = 'REMOVE';
-          document.getElementById('f-image-preview').innerHTML = '';
+          modalState[sl[3]] = 'REMOVE';
+          document.getElementById('f-image'+sl[0]+'-preview').innerHTML = '';
         });
       }
     });
-  }
+  });
 }
 
 function buildTxModalHtml(type, editing){
@@ -2532,7 +2543,8 @@ function buildTxModalHtml(type, editing){
       fieldsHtml+
       '<div class="field"><label>Fecha</label><input type="date" id="f-date" value="'+esc(dateVal)+'"><div class="field-error">Seleccione una fecha.</div></div>'+
       '<div class="field"><label>Notas</label><textarea id="f-notes" placeholder="Información adicional que respalde la operación">'+esc(notesVal)+'</textarea></div>'+
-      '<div class="field"><label>Imagen de respaldo (opcional)</label><input type="file" accept="image/*" id="f-image"><div id="f-image-preview"></div></div>'+
+      '<div class="field"><label>Imagen de respaldo 1 (opcional)</label><input type="file" accept="image/*" id="f-image"><div id="f-image-preview"></div></div>'+
+      '<div class="field"><label>Imagen de respaldo 2 (opcional)</label><input type="file" accept="image/*" id="f-image2"><div id="f-image2-preview"></div></div>'+
     '</form>'+
     '<div class="modal-foot"><button type="button" class="btn" id="tx-cancel">Cancelar</button><button type="button" class="btn btn-primary" id="tx-save">Guardar</button></div>'+
   '</div>';
@@ -2604,18 +2616,21 @@ function wireTxModal(type, editing){
     updateTransferCalc();
   }
 
-  var imgInput = document.getElementById('f-image');
-  imgInput.addEventListener('change', function(e){
-    var file = e.target.files[0];
-    if(!file) return;
-    compressImage(file, function(dataUrl){
-      modalState.pendingImage = dataUrl;
-      var prev = document.getElementById('f-image-preview');
-      prev.innerHTML = '<div class="img-preview"><img src="'+dataUrl+'"><button type="button" class="btn-link" id="f-image-remove">Quitar imagen</button></div>';
-      document.getElementById('f-image-remove').addEventListener('click', function(){
-        modalState.pendingImage = 'REMOVE';
-        prev.innerHTML = '';
-        imgInput.value = '';
+  [['','pendingImage'],['2','pendingImage2']].forEach(function(sl){
+    var imgInput = document.getElementById('f-image'+sl[0]);
+    if(!imgInput) return;
+    imgInput.addEventListener('change', function(e){
+      var file = e.target.files[0];
+      if(!file) return;
+      compressImage(file, function(dataUrl){
+        modalState[sl[1]] = dataUrl;
+        var prev = document.getElementById('f-image'+sl[0]+'-preview');
+        prev.innerHTML = '<div class="img-preview"><img src="'+dataUrl+'"><button type="button" class="btn-link" id="f-image'+sl[0]+'-remove">Quitar imagen</button></div>';
+        document.getElementById('f-image'+sl[0]+'-remove').addEventListener('click', function(){
+          modalState[sl[1]] = 'REMOVE';
+          prev.innerHTML = '';
+          imgInput.value = '';
+        });
       });
     });
   });
@@ -2725,6 +2740,9 @@ async function handleTxSave(type, editingId){
   var pendingImage = modalState.pendingImage;
   var hadImage = editingId ? !!((state.transactions.find(function(t){return t.id===editingId;})||{}).hasImage) : false;
   record.hasImage = pendingImage === 'REMOVE' ? false : (pendingImage ? true : hadImage);
+  var pendingImage2 = modalState.pendingImage2;
+  var hadImage2 = editingId ? !!((state.transactions.find(function(t){return t.id===editingId;})||{}).hasImage2) : false;
+  record.hasImage2 = pendingImage2 === 'REMOVE' ? false : (pendingImage2 ? true : hadImage2);
 
   if(editingId){
     var idx = state.transactions.findIndex(function(t){ return t.id===editingId; });
@@ -2735,6 +2753,8 @@ async function handleTxSave(type, editingId){
   await persist('transactions');
   if(pendingImage && pendingImage!=='REMOVE'){ await saveImage(record.id, pendingImage); }
   if(pendingImage==='REMOVE'){ await deleteImageKey(record.id); }
+  if(pendingImage2 && pendingImage2!=='REMOVE'){ await saveImage(record.id+'#2', pendingImage2); }
+  if(pendingImage2==='REMOVE'){ await deleteImageKey(record.id+'#2'); }
 
   closeModal();
   renderApp();
